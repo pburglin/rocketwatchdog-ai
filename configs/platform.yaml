@@ -1,0 +1,63 @@
+server:
+  host: 0.0.0.0
+  port: 8080
+  request_timeout_ms: 30000
+  max_body_size_kb: 512
+routing:
+  workload_header: x-rwd-workload
+  classification_header: x-rwd-data-class
+  source_app_header: x-rwd-source-app
+  allow_client_workload_override: false
+  trusted_override_source_apps:
+    - rocketclaw
+  metadata_paths:
+    workload: "$.meta.workload"
+    classification: "$.meta.classification"
+  default_workload: default
+security:
+  default_level: L0
+  fail_closed_on_invalid_config: true
+  normalize_unicode: true
+  redact_secrets_in_logs: true
+  default_action_on_guard_error: block
+  max_prompt_chars: 32000
+  max_output_chars: 16000
+llm_backends:
+  openai_primary:
+    provider: openai_compatible
+    base_url: "https://api.example-llm.com/v1"
+    api_key_env: ROCKETWATCHDOG_LLM_API_KEY
+    timeout_ms: 25000
+    models:
+      - gpt-main
+      - gpt-fast
+mcp_backends:
+  internal_tools:
+    transport: http
+    base_url: "http://localhost:9001"
+    timeout_ms: 10000
+    auth:
+      type: bearer_env
+      token_env: ROCKETWATCHDOG_MCP_TOKEN
+logging:
+  level: info
+  access_log: true
+  decision_log: true
+  log_dir: "./logs"
+redaction:
+  secret_patterns:
+    - "(?i)api[_-]?key"
+    - "(?i)bearer\\s+[a-z0-9\\._\\-]+"
+  pii_patterns:
+    - "\\b\\d{3}-\\d{2}-\\d{4}\\b"
+guardrails:
+  scanners:
+    prompt_injection:
+      enabled: true
+      mode: heuristic
+    output_leakage:
+      enabled: true
+      mode: heuristic
+    tool_risk:
+      enabled: true
+      mode: heuristic

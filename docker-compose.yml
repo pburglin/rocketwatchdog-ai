@@ -1,0 +1,10 @@
+services:
+  rocketwatchdog:
+    build: .
+    image: rocketwatchdog-ai:local
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./configs:/app/configs:ro
+    environment:
+      - ROCKETWATCHDOG_LLM_API_KEY=${ROCKETWATCHDOG_LLM_API_KEY}

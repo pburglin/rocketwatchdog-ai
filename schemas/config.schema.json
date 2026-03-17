@@ -1,0 +1,80 @@
+{
+  "$id": "config.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["server", "logging", "policies", "adapters", "snapshots"],
+  "properties": {
+    "server": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["host", "port", "bodyLimit", "requestTimeoutMs"],
+      "properties": {
+        "host": { "type": "string" },
+        "port": { "type": "integer", "minimum": 1 },
+        "bodyLimit": { "type": "integer", "minimum": 1024 },
+        "requestTimeoutMs": { "type": "integer", "minimum": 100 }
+      }
+    },
+    "logging": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["level"],
+      "properties": {
+        "level": { "type": "string" }
+      }
+    },
+    "policies": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["default", "workloads"],
+      "properties": {
+        "default": { "$ref": "policy.schema.json" },
+        "workloads": {
+          "type": "array",
+          "items": { "$ref": "workload.schema.json" }
+        }
+      }
+    },
+    "adapters": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "openai": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "baseUrl", "timeoutMs"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "baseUrl": { "type": "string" },
+            "apiKey": { "type": "string" },
+            "organization": { "type": "string" },
+            "project": { "type": "string" },
+            "timeoutMs": { "type": "integer", "minimum": 100 }
+          }
+        },
+        "mcp": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "baseUrl", "timeoutMs"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "baseUrl": { "type": "string" },
+            "headers": {
+              "type": "object",
+              "additionalProperties": { "type": "string" }
+            },
+            "timeoutMs": { "type": "integer", "minimum": 100 }
+          }
+        }
+      }
+    },
+    "snapshots": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dir"],
+      "properties": {
+        "dir": { "type": "string" }
+      }
+    }
+  }
+}

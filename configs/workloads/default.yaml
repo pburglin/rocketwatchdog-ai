@@ -1,0 +1,30 @@
+id: default
+match:
+  routes:
+    - "/"
+policy:
+  level: L0
+  data_classification: D0
+  allowed_llm_backends:
+    - openai_primary
+  allowed_models:
+    - gpt-fast
+    - gpt-main
+  allowed_mcp_backends: []
+  allowed_tools: []
+  require_user_id: false
+  require_session_id: false
+  max_prompt_chars: 24000
+  max_output_chars: 12000
+guards:
+  input:
+    heuristic_prompt_injection: true
+  output:
+    secret_redaction: true
+  tools:
+    require_tool_allowlist: true
+    require_tool_schema_validation: false
+actions:
+  on_block:
+    http_status: 403
+    message: "Request blocked by RocketWatchDog policy."

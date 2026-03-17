@@ -1,0 +1,128 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["server", "routing", "security", "llm_backends", "mcp_backends", "logging", "redaction"],
+  "properties": {
+    "server": {
+      "type": "object",
+      "required": ["host", "port", "request_timeout_ms", "max_body_size_kb"],
+      "properties": {
+        "host": { "type": "string" },
+        "port": { "type": "integer", "minimum": 1 },
+        "request_timeout_ms": { "type": "integer", "minimum": 100 },
+        "max_body_size_kb": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "routing": {
+      "type": "object",
+      "required": ["workload_header", "allow_client_workload_override"],
+      "properties": {
+        "workload_header": { "type": "string" },
+        "classification_header": { "type": "string" },
+        "source_app_header": { "type": "string" },
+        "allow_client_workload_override": { "type": "boolean" },
+        "trusted_override_source_apps": { "type": "array", "items": { "type": "string" } },
+        "metadata_paths": {
+          "type": "object",
+          "properties": {
+            "workload": { "type": "string" },
+            "classification": { "type": "string" }
+          }
+        },
+        "source_app_workload_map": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "default_workload": { "type": "string" }
+      }
+    },
+    "security": {
+      "type": "object",
+      "required": ["default_level", "fail_closed_on_invalid_config", "normalize_unicode", "redact_secrets_in_logs", "default_action_on_guard_error"],
+      "properties": {
+        "default_level": { "type": "string", "enum": ["L0", "L1", "L2", "L3", "L4"] },
+        "fail_closed_on_invalid_config": { "type": "boolean" },
+        "normalize_unicode": { "type": "boolean" },
+        "redact_secrets_in_logs": { "type": "boolean" },
+        "default_action_on_guard_error": { "type": "string", "enum": ["allow", "block"] },
+        "max_prompt_chars": { "type": "integer", "minimum": 1 },
+        "max_output_chars": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "llm_backends": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["provider", "base_url", "timeout_ms", "models"],
+        "properties": {
+          "provider": { "type": "string" },
+          "base_url": { "type": "string" },
+          "api_key_env": { "type": "string" },
+          "timeout_ms": { "type": "integer", "minimum": 100 },
+          "models": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "mcp_backends": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["transport", "base_url", "timeout_ms"],
+        "properties": {
+          "transport": { "type": "string", "enum": ["http"] },
+          "base_url": { "type": "string" },
+          "timeout_ms": { "type": "integer", "minimum": 100 },
+          "auth": {
+            "type": "object",
+            "properties": {
+              "type": { "type": "string", "enum": ["bearer_env", "none"] },
+              "token_env": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "logging": {
+      "type": "object",
+      "required": ["level", "access_log", "decision_log"],
+      "properties": {
+        "level": { "type": "string" },
+        "access_log": { "type": "boolean" },
+        "decision_log": { "type": "boolean" },
+        "log_dir": { "type": "string" }
+      }
+    },
+    "redaction": {
+      "type": "object",
+      "required": ["secret_patterns"],
+      "properties": {
+        "secret_patterns": { "type": "array", "items": { "type": "string" } },
+        "pii_patterns": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "guardrails": {
+      "type": "object",
+      "properties": {
+        "scanners": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "enabled": { "type": "boolean" },
+              "mode": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "auth": {
+      "type": "object",
+      "properties": {
+        "mode": { "type": "string", "enum": ["none", "api_key", "jwt"] },
+        "api_key_env": { "type": "string" },
+        "jwt_issuer": { "type": "string" },
+        "jwt_audience": { "type": "string" }
+      }
+    }
+  }
+}

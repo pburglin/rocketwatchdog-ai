@@ -1,0 +1,37 @@
+id: sensitive-mcp
+match:
+  headers:
+    x-rwd-workload: "sensitive-mcp"
+  metadata:
+    "$.meta.workload": "sensitive-mcp"
+policy:
+  level: L3
+  data_classification: D3
+  allowed_llm_backends:
+    - openai_primary
+  allowed_models:
+    - gpt-main
+  allowed_mcp_backends:
+    - internal_tools
+  allowed_tools:
+    - read_customer_record
+    - create_ticket
+  require_user_id: true
+  require_session_id: true
+  max_prompt_chars: 12000
+  max_output_chars: 8000
+guards:
+  input:
+    heuristic_prompt_injection: true
+  output:
+    secret_redaction: true
+    pii_redaction: true
+  tools:
+    require_tool_allowlist: true
+    require_tool_schema_validation: true
+    require_intent_check: true
+    require_confirmation_for_write: true
+actions:
+  on_block:
+    http_status: 403
+    message: "Sensitive workload blocked by policy."

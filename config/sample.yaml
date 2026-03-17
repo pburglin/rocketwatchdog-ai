@@ -1,0 +1,82 @@
+server:
+  host: "0.0.0.0"
+  port: 8080
+  bodyLimit: 1048576
+  requestTimeoutMs: 30000
+logging:
+  level: "info"
+policies:
+  default:
+    maxInputChars: 20000
+    normalizeUnicode: true
+    promptInjection:
+      enabled: true
+      patterns:
+        - "ignore\\s+previous\\s+instructions"
+        - "system\\s+prompt"
+    redaction:
+      enabled: true
+      patterns:
+        - "sk-[A-Za-z0-9]{20,}"
+        - "AKIA[0-9A-Z]{16}"
+    tools:
+      allowlist:
+        - "get_weather"
+        - "lookup_user"
+      schemas:
+        get_weather:
+          type: object
+          additionalProperties: false
+          required: ["city"]
+          properties:
+            city:
+              type: string
+            units:
+              type: string
+              enum: ["c", "f"]
+        lookup_user:
+          type: object
+          additionalProperties: false
+          required: ["user_id"]
+          properties:
+            user_id:
+              type: string
+  workloads:
+    - name: "internal-tools"
+      match:
+        header:
+          name: "x-workload"
+          value: "internal"
+      policy:
+        maxInputChars: 40000
+        tools:
+          allowlist:
+            - "get_weather"
+            - "lookup_user"
+            - "admin_reset"
+          schemas:
+            admin_reset:
+              type: object
+              additionalProperties: false
+              required: ["target"]
+              properties:
+                target:
+                  type: string
+    - name: "partner"
+      match:
+        pathPrefix: "/proxy"
+      policy:
+        promptInjection:
+          enabled: false
+adapters:
+  openai:
+    enabled: true
+    baseUrl: "https://api.openai.com"
+    apiKey: ""
+    timeoutMs: 30000
+  mcp:
+    enabled: false
+    baseUrl: "https://mcp.example.com/proxy"
+    timeoutMs: 30000
+snapshots:
+  dir: "snapshots"
