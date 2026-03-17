@@ -3,6 +3,8 @@ import type { ConfigSnapshot, EffectivePolicy } from "../types/config.js";
 import { proxyOpenAI } from "../adapters/openai.js";
 import { proxyMcp } from "../adapters/mcp.js";
 import { buildCanonicalRequest } from "../pipeline/normalize.js";
+import { ConfigSnapshotManager } from "../config/snapshot.js";
+import { scanSkill } from "../skills/scan.js";
 
 function normalizeHeaders(
   headers: Record<string, string | string[] | undefined>
@@ -16,7 +18,7 @@ function normalizeHeaders(
 
 export function registerRoutes(
   app: FastifyInstance<any, any, any, any, any>,
-  snapshot: ConfigSnapshot,
+  snapshotManager: ConfigSnapshotManager,
   resolvePolicy: (
     route: string,
     headers: Record<string, string>,
@@ -24,13 +26,17 @@ export function registerRoutes(
   ) => EffectivePolicy
 ) {
   app.get("/healthz", async () => ({ status: "ok" }));
-  app.get("/readyz", async () => ({
-    status: "ready",
-    llm_backends: Object.keys(snapshot.platform.llm_backends ?? {}),
-    mcp_backends: Object.keys(snapshot.platform.mcp_backends ?? {})
-  }));
+  app.get("/readyz", async () => {
+    const snapshot = snapshotManager.get();
+    return {
+      status: "ready",
+      llm_backends: Object.keys(snapshot.platform.llm_backends ?? {}),
+      mcp_backends: Object.keys(snapshot.platform.mcp_backends ?? {})
+    };
+  });
 
   app.get("/v1/config/effective", async (request, reply) => {
+    const snapshot = snapshotManager.get();
     if (snapshot.platform.security.redact_secrets_in_logs) {
       reply.send({ platform: "redacted" });
       return;
@@ -38,12 +44,26 @@ export function registerRoutes(
     reply.send(snapshot);
   });
 
-  app.post("/v1/config/reload", async () => ({ status: "not_implemented" }));
+  app.post("/v1/config/reload", async () => {
+    const snapshot = snapshotManager.reload();
+    return { status: "ok", loadedAt: snapshot.loadedAt };
+  });
+
+  app.post("/v1/skills/scan", async (request, reply) => {
+    const body = request.body as { name?: string; content?: string };
+    if (!body?.content) {
+      reply.code(400).send({ error: "content_required" });
+      return;
+    }
+    const result = scanSkill(body.content);
+    reply.send(result);
+  });
 
   app.post("/v1/proxy/llm", async (request, reply) => {
     const headers = normalizeHeaders(request.headers);
     const body = request.body as Record<string, unknown>;
     const policy = resolvePolicy(request.routerPath ?? request.url, headers, body);
+    const snapshot = snapshotManager.get();
     const canonical = buildCanonicalRequest(request, headers, body);
     await proxyOpenAI(request, reply, snapshot, policy, canonical);
   });
@@ -52,6 +72,7 @@ export function registerRoutes(
     const headers = normalizeHeaders(request.headers);
     const body = request.body as Record<string, unknown>;
     const policy = resolvePolicy(request.routerPath ?? request.url, headers, body);
+    const snapshot = snapshotManager.get();
     const canonical = buildCanonicalRequest(request, headers, body);
     await proxyMcp(request, reply, snapshot, policy, canonical);
   });
@@ -60,6 +81,7 @@ export function registerRoutes(
     const headers = normalizeHeaders(request.headers);
     const body = request.body as Record<string, unknown>;
     const policy = resolvePolicy(request.routerPath ?? request.url, headers, body);
+    const snapshot = snapshotManager.get();
     const canonical = buildCanonicalRequest(request, headers, body);
     await proxyOpenAI(request, reply, snapshot, policy, canonical);
   });
@@ -68,6 +90,7 @@ export function registerRoutes(
     const headers = normalizeHeaders(request.headers);
     const body = request.body as Record<string, unknown>;
     const policy = resolvePolicy(request.routerPath ?? request.url, headers, body);
+    const snapshot = snapshotManager.get();
     const canonical = buildCanonicalRequest(request, headers, body);
     await proxyOpenAI(request, reply, snapshot, policy, canonical);
   });

@@ -5,6 +5,8 @@ import type { CanonicalRequest } from "../types/canonical.js";
 import { runGuards } from "../core/guard/index.js";
 import { extractTextFromMessages, extractToolDefinitions, extractToolInvocations } from "../utils/extract.js";
 import { redactMessages } from "../utils/redact-messages.js";
+import { redactSecrets } from "../core/guard/redaction.js";
+import { redactObjectStrings } from "../utils/redact-object.js";
 
 export async function proxyOpenAI(
   request: FastifyRequest,
@@ -75,6 +77,28 @@ export async function proxyOpenAI(
   });
 
   const text = await response.text();
+  const patterns = [
+    ...snapshot.platform.redaction.secret_patterns,
+    ...(policy.output_guards.pii_redaction ? snapshot.platform.redaction.pii_patterns ?? [] : [])
+  ];
+
+  if (patterns.length > 0 && response.headers.get("content-type")?.includes("application/json")) {
+    try {
+      const parsed = JSON.parse(text);
+      const redacted = redactObjectStrings(parsed, patterns);
+      reply.code(response.status);
+      reply.headers(Object.fromEntries(response.headers.entries()));
+      reply.send(JSON.stringify(redacted.redacted));
+      return;
+    } catch {
+      const fallback = redactSecrets(text, patterns);
+      reply.code(response.status);
+      reply.headers(Object.fromEntries(response.headers.entries()));
+      reply.send(fallback.redacted);
+      return;
+    }
+  }
+
   reply.code(response.status);
   reply.headers(Object.fromEntries(response.headers.entries()));
   reply.send(text);
