@@ -5,9 +5,9 @@ export function mergeEffectivePolicy(
   workload: WorkloadConfig
 ): EffectivePolicy {
   const policy = workload.policy;
-  const inputGuards = { ...(workload.guards?.input ?? {}) };
-  const outputGuards = { ...(workload.guards?.output ?? {}) };
-  const toolGuards = { ...(workload.guards?.tools ?? {}) };
+  const inputGuards = { ...defaultInputGuards(policy.level), ...(workload.guards?.input ?? {}) };
+  const outputGuards = { ...defaultOutputGuards(policy.level), ...(workload.guards?.output ?? {}) };
+  const toolGuards = { ...defaultToolGuards(policy.level), ...(workload.guards?.tools ?? {}) };
 
   const maxPrompt = clampNumber(
     policy.max_prompt_chars ?? platform.security.max_prompt_chars ?? 0,
@@ -40,4 +40,60 @@ function clampNumber(value: number, cap?: number): number {
   if (!cap || cap <= 0) return value;
   if (value <= 0) return cap;
   return Math.min(value, cap);
+}
+
+function defaultInputGuards(level: string): Record<string, boolean> {
+  if (level === "L3") {
+    return {
+      schema_validation: true,
+      heuristic_prompt_injection: true,
+      lightweight_classifier: true,
+      llm_security_scan: true
+    };
+  }
+  if (level === "L2") {
+    return {
+      schema_validation: true,
+      heuristic_prompt_injection: true,
+      lightweight_classifier: true
+    };
+  }
+  if (level === "L1") {
+    return {
+      schema_validation: true,
+      heuristic_prompt_injection: true
+    };
+  }
+  return { schema_validation: true, heuristic_prompt_injection: true };
+}
+
+function defaultOutputGuards(level: string): Record<string, boolean> {
+  if (level === "L3") {
+    return { secret_redaction: true, pii_redaction: true, output_policy_scan: true };
+  }
+  if (level === "L2") {
+    return { secret_redaction: true, pii_redaction: true };
+  }
+  if (level === "L1") {
+    return { secret_redaction: true };
+  }
+  return { secret_redaction: true };
+}
+
+function defaultToolGuards(level: string): Record<string, boolean> {
+  if (level === "L3") {
+    return {
+      require_tool_allowlist: true,
+      require_tool_schema_validation: true,
+      require_intent_check: true,
+      require_confirmation_for_write: true
+    };
+  }
+  if (level === "L2") {
+    return { require_tool_allowlist: true, require_tool_schema_validation: true };
+  }
+  if (level === "L1") {
+    return { require_tool_allowlist: true };
+  }
+  return { require_tool_allowlist: true };
 }
