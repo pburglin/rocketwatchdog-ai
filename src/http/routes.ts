@@ -47,6 +47,10 @@ export function registerRoutes(
 
   app.post("/v1/config/reload", async () => {
     const snapshot = snapshotManager.reload();
+    const error = snapshotManager.getLastError();
+    if (error) {
+      return { status: "error", message: error, loadedAt: snapshot.loadedAt };
+    }
     return { status: "ok", loadedAt: snapshot.loadedAt };
   });
 
