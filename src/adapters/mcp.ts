@@ -41,8 +41,12 @@ export async function proxyMcp(
 
   const body = request.body as Record<string, unknown>;
   const inputText = extractMcpText(body);
+  const toolInvocations =
+    typeof body.tool === "string"
+      ? [{ name: body.tool as string, arguments: body.arguments }]
+      : undefined;
   const guardResult = runGuards(
-    { text: inputText },
+    { text: inputText, toolInvocations },
     policy,
     snapshot.platform,
     snapshot.toolSchemas
