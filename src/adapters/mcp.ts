@@ -108,6 +108,10 @@ export async function proxyMcp(
   });
 
   const text = await response.text();
+  if (policy.max_output_chars > 0 && text.length > policy.max_output_chars) {
+    reply.code(413).send({ error: "output_too_large" });
+    return;
+  }
   const patterns = [
     ...snapshot.platform.redaction.secret_patterns,
     ...(policy.output_guards.pii_redaction ? snapshot.platform.redaction.pii_patterns ?? [] : [])

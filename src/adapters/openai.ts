@@ -27,6 +27,18 @@ export async function proxyOpenAI(
   }
 
   const body = request.body as Record<string, unknown>;
+  const model = typeof body?.model === "string" ? body.model : undefined;
+  if (policy.allowed_models.length > 0) {
+    if (!model) {
+      reply.code(400).send({ error: "model_required" });
+      return;
+    }
+    if (!policy.allowed_models.includes(model)) {
+      reply.code(403).send({ error: "model_not_allowed", model });
+      return;
+    }
+  }
+
   const messages = body?.messages;
   const inputText = extractTextFromMessages(messages);
   const tools = extractToolDefinitions(body?.tools);
@@ -77,6 +89,10 @@ export async function proxyOpenAI(
   });
 
   const text = await response.text();
+  if (policy.max_output_chars > 0 && text.length > policy.max_output_chars) {
+    reply.code(413).send({ error: "output_too_large" });
+    return;
+  }
   const patterns = [
     ...snapshot.platform.redaction.secret_patterns,
     ...(policy.output_guards.pii_redaction ? snapshot.platform.redaction.pii_patterns ?? [] : [])
