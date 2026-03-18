@@ -5,6 +5,7 @@ import { proxyMcp } from "../adapters/mcp.js";
 import { buildCanonicalRequest } from "../pipeline/normalize.js";
 import { ConfigSnapshotManager } from "../config/snapshot.js";
 import { scanSkill } from "../skills/scan.js";
+import { buildPipeline } from "../pipeline/build.js";
 
 function normalizeHeaders(
   headers: Record<string, string | string[] | undefined>
@@ -65,6 +66,17 @@ export function registerRoutes(
     const policy = resolvePolicy(request.routerPath ?? request.url, headers, body);
     const snapshot = snapshotManager.get();
     const canonical = buildCanonicalRequest(request, headers, body);
+    const pipeline = buildPipeline();
+    const ctx = await pipeline.run({
+      route: request.routerPath ?? request.url,
+      headers,
+      payload: body,
+      snapshot
+    });
+    if (ctx.decision?.action === "block") {
+      reply.code(403).send({ error: "guard_rejected", reasons: ctx.decision.reasonCodes });
+      return;
+    }
     await proxyOpenAI(request, reply, snapshot, policy, canonical);
   });
 
@@ -74,6 +86,17 @@ export function registerRoutes(
     const policy = resolvePolicy(request.routerPath ?? request.url, headers, body);
     const snapshot = snapshotManager.get();
     const canonical = buildCanonicalRequest(request, headers, body);
+    const pipeline = buildPipeline();
+    const ctx = await pipeline.run({
+      route: request.routerPath ?? request.url,
+      headers,
+      payload: body,
+      snapshot
+    });
+    if (ctx.decision?.action === "block") {
+      reply.code(403).send({ error: "guard_rejected", reasons: ctx.decision.reasonCodes });
+      return;
+    }
     await proxyMcp(request, reply, snapshot, policy, canonical);
   });
 
