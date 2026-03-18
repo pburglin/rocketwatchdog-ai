@@ -8,10 +8,15 @@ Security and policy middleware between client apps, LLM providers, and MCP serve
 - Secret/PII redaction on inbound prompts and outbound responses.
 - Workload-specific policy overrides based on headers, metadata, or route.
 - Skills security gateway for scanning new skills before install.
+- Config reload with last-known-good fallback.
 
 ## Config essentials
 
 Configs live under `configs/`:
+
+- Workload IDs must be unique, and the configured default workload must exist.
+- `allowed_models` is enforced (requests must specify a model in the allowlist).
+- If `require_tool_schema_validation` is enabled, every allowlisted tool should have a matching JSON schema in `configs/tools`.
 
 ```
 configs/
@@ -25,6 +30,18 @@ configs/
     read_customer_record.json
     create_ticket.json
 ```
+
+## Endpoints
+
+- `GET /healthz`
+- `GET /readyz`
+- `GET /v1/config/effective`
+- `POST /v1/config/reload`
+- `POST /v1/proxy/llm`
+- `POST /v1/proxy/mcp`
+- `POST /v1/chat/completions`
+- `POST /v1/responses`
+- `POST /v1/skills/scan`
 
 ## Docker
 
