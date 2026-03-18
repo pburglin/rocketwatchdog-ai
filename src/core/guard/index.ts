@@ -55,10 +55,17 @@ export function runGuards(
     reasons.push(...toolValidation.reasons);
   }
 
+  const hasReasons = reasons.length > 0;
+  const hasRedactions = redaction.hits > 0;
   const decision: GuardDecision = {
-    action: reasons.length === 0 ? "allow" : "block",
+    action: hasReasons
+      ? "block"
+      : hasRedactions
+        ? "allow_with_annotations"
+        : "allow",
     reasonCodes: reasons,
-    severity: reasons.length === 0 ? "info" : "high"
+    severity: hasReasons ? "high" : hasRedactions ? "low" : "info",
+    annotations: hasRedactions ? { redacted: true } : undefined
   };
 
   return {
