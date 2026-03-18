@@ -55,13 +55,18 @@ export function registerRoutes(
   });
 
   app.post("/v1/skills/scan", async (request, reply) => {
-    const body = request.body as { name?: string; content?: string };
+    const body = request.body as { name?: string; content?: string; maxRiskScore?: number };
     if (!body?.content) {
       reply.code(400).send({ error: "content_required" });
       return;
     }
     const result = scanSkill(body.content);
-    reply.send(result);
+    const threshold = body.maxRiskScore ?? 20;
+    if (!result.allowed || result.riskScore >= threshold) {
+      reply.code(403).send({ ...result, blocked: true, threshold });
+      return;
+    }
+    reply.send({ ...result, blocked: false, threshold });
   });
 
   app.post("/v1/proxy/llm", async (request, reply) => {
