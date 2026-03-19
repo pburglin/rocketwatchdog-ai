@@ -129,6 +129,24 @@ export function registerRoutes(
     const policy = resolvePolicy(request.routerPath ?? request.url, headers, body);
     const snapshot = snapshotManager.get();
     const canonical = buildCanonicalRequest(request, headers, body);
+    const pipeline = buildPipeline();
+    const ctx = await pipeline.run({
+      route: request.routerPath ?? request.url,
+      headers,
+      payload: body,
+      snapshot
+    });
+    if (ctx.decision?.action === "block") {
+      const override = ctx.workload?.actions?.on_block;
+      reply
+        .code(override?.http_status ?? 403)
+        .send({
+          error: "guard_rejected",
+          reasons: ctx.decision.reasonCodes,
+          message: override?.message
+        });
+      return;
+    }
     await proxyOpenAI(request, reply, snapshot, policy, canonical);
   });
 
@@ -138,6 +156,24 @@ export function registerRoutes(
     const policy = resolvePolicy(request.routerPath ?? request.url, headers, body);
     const snapshot = snapshotManager.get();
     const canonical = buildCanonicalRequest(request, headers, body);
+    const pipeline = buildPipeline();
+    const ctx = await pipeline.run({
+      route: request.routerPath ?? request.url,
+      headers,
+      payload: body,
+      snapshot
+    });
+    if (ctx.decision?.action === "block") {
+      const override = ctx.workload?.actions?.on_block;
+      reply
+        .code(override?.http_status ?? 403)
+        .send({
+          error: "guard_rejected",
+          reasons: ctx.decision.reasonCodes,
+          message: override?.message
+        });
+      return;
+    }
     await proxyOpenAI(request, reply, snapshot, policy, canonical);
   });
 }
