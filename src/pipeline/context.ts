@@ -11,4 +11,5 @@ export type RequestContext = {
   policy?: EffectivePolicy;
   decision?: GuardDecision;
   target?: "llm" | "mcp";
+  workload?: WorkloadConfig;
 };

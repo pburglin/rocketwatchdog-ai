@@ -11,7 +11,7 @@ export class ResolveWorkloadStage implements PipelineStage<RequestContext> {
       sourceApp: ctx.headers[ctx.snapshot.platform.routing.source_app_header?.toLowerCase() ?? ""]
     });
     if (!workload) throw new Error("No workload resolved");
-    (ctx as RequestContext & { workload?: typeof workload }).workload = workload;
+    ctx.workload = workload;
     return ctx;
   }
 }

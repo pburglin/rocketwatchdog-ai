@@ -83,9 +83,7 @@ export function registerRoutes(
       snapshot
     });
     if (ctx.decision?.action === "block") {
-      const workload = (ctx as { workload?: { actions?: { on_block?: { http_status?: number; message?: string } } } })
-        .workload;
-      const override = workload?.actions?.on_block;
+      const override = ctx.workload?.actions?.on_block;
       reply
         .code(override?.http_status ?? 403)
         .send({
@@ -112,9 +110,7 @@ export function registerRoutes(
       snapshot
     });
     if (ctx.decision?.action === "block") {
-      const workload = (ctx as { workload?: { actions?: { on_block?: { http_status?: number; message?: string } } } })
-        .workload;
-      const override = workload?.actions?.on_block;
+      const override = ctx.workload?.actions?.on_block;
       reply
         .code(override?.http_status ?? 403)
         .send({
