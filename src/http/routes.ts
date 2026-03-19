@@ -83,7 +83,16 @@ export function registerRoutes(
       snapshot
     });
     if (ctx.decision?.action === "block") {
-      reply.code(403).send({ error: "guard_rejected", reasons: ctx.decision.reasonCodes });
+      const workload = (ctx as { workload?: { actions?: { on_block?: { http_status?: number; message?: string } } } })
+        .workload;
+      const override = workload?.actions?.on_block;
+      reply
+        .code(override?.http_status ?? 403)
+        .send({
+          error: "guard_rejected",
+          reasons: ctx.decision.reasonCodes,
+          message: override?.message
+        });
       return;
     }
     await proxyOpenAI(request, reply, snapshot, policy, canonical);
@@ -103,7 +112,16 @@ export function registerRoutes(
       snapshot
     });
     if (ctx.decision?.action === "block") {
-      reply.code(403).send({ error: "guard_rejected", reasons: ctx.decision.reasonCodes });
+      const workload = (ctx as { workload?: { actions?: { on_block?: { http_status?: number; message?: string } } } })
+        .workload;
+      const override = workload?.actions?.on_block;
+      reply
+        .code(override?.http_status ?? 403)
+        .send({
+          error: "guard_rejected",
+          reasons: ctx.decision.reasonCodes,
+          message: override?.message
+        });
       return;
     }
     await proxyMcp(request, reply, snapshot, policy, canonical);
