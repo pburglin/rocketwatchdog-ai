@@ -63,6 +63,22 @@ docker run --rm -p 8080:8080 \
 docker compose up --build
 ```
 
+## K8s (optional)
+
+Basic deployment idea (use a ConfigMap for configs and scale horizontally):
+
+```bash
+kubectl create namespace rocketwatchdog
+kubectl -n rocketwatchdog create configmap rwd-config --from-file=configs
+kubectl -n rocketwatchdog create deployment rocketwatchdog --image=rocketwatchdog-ai:local \
+  --dry-run=client -o yaml > rocketwatchdog-deploy.yaml
+kubectl -n rocketwatchdog apply -f rocketwatchdog-deploy.yaml
+kubectl -n rocketwatchdog scale deployment rocketwatchdog --replicas=3
+kubectl -n rocketwatchdog expose deployment rocketwatchdog --type=ClusterIP --port=8080
+```
+
+Mount `/app/configs` from the ConfigMap and use a Service/Ingress for traffic.
+
 See `/docs` for architecture and skills gateway notes.
 
 docker compose up --build
