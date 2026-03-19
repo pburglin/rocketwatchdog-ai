@@ -4,6 +4,7 @@ import { loadConfigDir } from "./config/loader.js";
 import { mergeEffectivePolicy } from "./types/policy.js";
 import { resolveWorkload } from "./core/workload.js";
 import { runGuards } from "./core/guard/index.js";
+import { buildPipeline } from "./pipeline/build.js";
 
 const program = new Command();
 
@@ -56,13 +57,26 @@ program
     });
     if (!workload) throw new Error("No workload resolved");
     const policy = mergeEffectivePolicy(snapshot.platform, workload);
-    const guardResult = runGuards(
-      { text: JSON.stringify(requestPayload.body ?? requestPayload) },
-      policy,
-      snapshot.platform,
-      snapshot.toolSchemas
-    );
-    console.log(JSON.stringify({ workload: workload.id, decision: guardResult.decision }, null, 2));
+    const pipeline = buildPipeline();
+    const ctx = await pipeline.run({
+      route: requestPayload.route ?? "/v1/proxy/llm",
+      headers,
+      payload: requestPayload.body ?? requestPayload,
+      snapshot
+    });
+    if (!ctx.decision) {
+      const guardResult = runGuards(
+        { text: JSON.stringify(requestPayload.body ?? requestPayload) },
+        policy,
+        snapshot.platform,
+        snapshot.toolSchemas
+      );
+      console.log(
+        JSON.stringify({ workload: workload.id, decision: guardResult.decision }, null, 2)
+      );
+      return;
+    }
+    console.log(JSON.stringify({ workload: workload.id, decision: ctx.decision }, null, 2));
   });
 
 program
