@@ -6,6 +6,7 @@ import { buildCanonicalRequest } from "../pipeline/normalize.js";
 import { ConfigSnapshotManager } from "../config/snapshot.js";
 import { scanSkill } from "../skills/scan.js";
 import { buildPipeline } from "../pipeline/build.js";
+import { authenticateRequest } from "../auth/auth.js";
 
 function normalizeHeaders(
   headers: Record<string, string | string[] | undefined>
@@ -168,6 +169,15 @@ export function registerRoutes(
       reply
         .code(override?.http_status ?? 403)
         .send({
+          error: "guard_rejected",
+          reasons: ctx.decision.reasonCodes,
+          message: override?.message
+        });
+      return;
+    }
+    await proxyOpenAI(request, reply, snapshot, policy, canonical);
+  });
+}
           error: "guard_rejected",
           reasons: ctx.decision.reasonCodes,
           message: override?.message
