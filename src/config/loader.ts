@@ -61,6 +61,9 @@ export function loadConfigDir(configDir: string): ConfigSnapshot {
     }
   }
 
+  validateToolSchemas(toolSchemas);
+  validateSnapshot(platform, workloads, toolSchemas);
+
   return {
     platform,
     workloads,
@@ -72,6 +75,87 @@ export function loadConfigDir(configDir: string): ConfigSnapshot {
 function parseYaml(filePath: string) {
   const raw = fs.readFileSync(filePath, "utf-8");
   return yaml.parse(raw);
+}
+
+function validateToolSchemas(toolSchemas: Record<string, Record<string, unknown>>) {
+  if (Object.keys(toolSchemas).length === 0) return;
+  const schemaAjv = new AjvCtor({ allErrors: true, strict: false });
+  applyFormats(schemaAjv);
+  for (const [name, schema] of Object.entries(toolSchemas)) {
+    try {
+      schemaAjv.compile(schema);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "unknown_schema_error";
+      throw new Error(`Tool schema invalid (${name}.json): ${message}`);
+    }
+  }
+}
+
+function validateSnapshot(
+  platform: PlatformConfig,
+  workloads: WorkloadConfig[],
+  toolSchemas: Record<string, Record<string, unknown>>
+) {
+  const ids = new Set<string>();
+  for (const workload of workloads) {
+    if (ids.has(workload.id)) {
+      throw new Error(`Duplicate workload id detected: ${workload.id}`);
+    }
+    ids.add(workload.id);
+  }
+
+  const defaultId = platform.routing.default_workload ?? "default";
+  if (!ids.has(defaultId)) {
+    throw new Error(`Default workload not found: ${defaultId}`);
+  }
+
+  for (const workload of workloads) {
+    const { policy, guards } = workload;
+    const allowedBackends = policy.allowed_llm_backends ?? [];
+    const allowedMcpBackends = policy.allowed_mcp_backends ?? [];
+
+    if (allowedBackends.length > 0) {
+      const missing = allowedBackends.filter((name) => !platform.llm_backends[name]);
+      if (missing.length > 0) {
+        throw new Error(
+          `Workload ${workload.id} references unknown llm_backends: ${missing.join(", ")}`
+        );
+      }
+    }
+
+    if (allowedMcpBackends.length > 0) {
+      const missing = allowedMcpBackends.filter((name) => !platform.mcp_backends[name]);
+      if (missing.length > 0) {
+        throw new Error(
+          `Workload ${workload.id} references unknown mcp_backends: ${missing.join(", ")}`
+        );
+      }
+    }
+
+    if (policy.allowed_models?.length) {
+      const backendsToCheck = allowedBackends.length > 0 ? allowedBackends : Object.keys(platform.llm_backends);
+      const availableModels = new Set<string>();
+      for (const name of backendsToCheck) {
+        const backend = platform.llm_backends[name];
+        backend?.models?.forEach((model) => availableModels.add(model));
+      }
+      const missingModels = policy.allowed_models.filter((model) => !availableModels.has(model));
+      if (missingModels.length > 0) {
+        throw new Error(
+          `Workload ${workload.id} references unknown allowed_models: ${missingModels.join(", ")}`
+        );
+      }
+    }
+
+    if (guards?.tools?.require_tool_schema_validation && policy.allowed_tools?.length) {
+      const missingSchemas = policy.allowed_tools.filter((tool) => !toolSchemas[tool]);
+      if (missingSchemas.length > 0) {
+        throw new Error(
+          `Workload ${workload.id} requires tool schemas but missing: ${missingSchemas.join(", ")}`
+        );
+      }
+    }
+  }
 }
 
 function validateOrThrow(

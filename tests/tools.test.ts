@@ -16,7 +16,7 @@ const policy: EffectivePolicy = {
   max_output_chars: 1000,
   input_guards: {},
   output_guards: {},
-  tool_guards: { require_tool_schema_validation: true }
+  tool_guards: { require_tool_schema_validation: true, require_tool_allowlist: true }
 };
 
 const toolSchemas = {
@@ -35,6 +35,24 @@ describe("validateTools", () => {
     const result = validateTools(policy, [{ name: "blocked" }], undefined, toolSchemas);
     expect(result.allowed).toBe(false);
     expect(result.reasons[0]).toContain("TOOL_NOT_ALLOWED");
+  });
+
+  it("flags missing tool names", () => {
+    const result = validateTools(policy, [{ name: "" }], [{ name: "" }], toolSchemas);
+    expect(result.allowed).toBe(false);
+    expect(result.reasons[0]).toContain("TOOL_NAME_MISSING");
+  });
+
+  it("flags missing tool schema when validation is required", () => {
+    const policyWithMissing = { ...policy, allowed_tools: ["allowed", "missing"] };
+    const result = validateTools(
+      policyWithMissing,
+      [{ name: "allowed" }],
+      [{ name: "missing", arguments: { id: "1" } }],
+      toolSchemas
+    );
+    expect(result.allowed).toBe(false);
+    expect(result.reasons[0]).toContain("TOOL_SCHEMA_MISSING");
   });
 
   it("validates tool invocation schema", () => {

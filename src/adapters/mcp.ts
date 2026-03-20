@@ -133,6 +133,14 @@ export async function proxyMcp(
     }
   }
 
+  if (patterns.length > 0) {
+    const fallback = redactSecrets(text, patterns);
+    reply.code(response.status);
+    reply.headers(Object.fromEntries(response.headers.entries()));
+    reply.send(fallback.redacted);
+    return;
+  }
+
   reply.code(response.status);
   reply.headers(Object.fromEntries(response.headers.entries()));
   reply.send(text);

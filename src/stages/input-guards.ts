@@ -16,7 +16,21 @@ export class InputGuardsStage implements PipelineStage<RequestContext> {
       ctx.snapshot.platform,
       ctx.snapshot.toolSchemas
     );
-    ctx.decision = result.decision;
+
+    const reasons = [...result.decision.reasonCodes];
+    if (ctx.policy.require_user_id && !ctx.canonical?.userId) {
+      reasons.push("USER_ID_REQUIRED");
+    }
+    if (ctx.policy.require_session_id && !ctx.canonical?.sessionId) {
+      reasons.push("SESSION_ID_REQUIRED");
+    }
+
+    ctx.decision = {
+      ...result.decision,
+      reasonCodes: reasons,
+      action: reasons.length === 0 ? "allow" : "block",
+      severity: reasons.length === 0 ? "info" : result.decision.severity
+    };
     return ctx;
   }
 }

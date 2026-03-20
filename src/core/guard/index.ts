@@ -41,7 +41,9 @@ export function runGuards(
     }
   }
 
-  const redaction = policy.output_guards.secret_redaction
+  const shouldRedactInput =
+    policy.input_guards.secret_redaction ?? policy.output_guards.secret_redaction;
+  const redaction = shouldRedactInput
     ? redactSecrets(workingText, platform.redaction.secret_patterns)
     : { redacted: workingText, hits: 0 };
 
