@@ -44,6 +44,11 @@ configs/
 - `POST /v1/responses`
 - `POST /v1/skills/scan`
 
+## Guard pipeline notes
+
+- Request guards run on inbound payloads; output guards run only when a `response` field is present.
+- Guard decisions preserve earlier block results unless an output response is explicitly evaluated.
+
 ## Docker
 
 ```bash
@@ -78,10 +83,5 @@ kubectl -n rocketwatchdog expose deployment rocketwatchdog --type=ClusterIP --po
 ```
 
 Mount `/app/configs` from the ConfigMap and use a Service/Ingress for traffic.
-
-See `/docs` for architecture and skills gateway notes.
-
-docker compose up --build
-```
 
 See `/docs` for architecture and skills gateway notes.
