@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import type { ConfigSnapshot, EffectivePolicy } from "../types/config.js";
+import type { EffectivePolicy } from "../types/config.js";
 import { proxyOpenAI } from "../adapters/openai.js";
 import { proxyMcp } from "../adapters/mcp.js";
 import { buildCanonicalRequest } from "../pipeline/normalize.js";
@@ -27,6 +27,16 @@ export function registerRoutes(
     payload?: Record<string, unknown>
   ) => EffectivePolicy
 ) {
+  const requireAuth = (request: any, reply: any) => {
+    const snapshot = snapshotManager.get();
+    const auth = authenticateRequest(request, snapshot.platform);
+    if (!auth.allowed) {
+      reply.code(auth.status).send({ error: auth.error ?? "unauthorized" });
+      return false;
+    }
+    return true;
+  };
+
   app.get("/healthz", async () => ({ status: "ok" }));
   app.get("/readyz", async () => {
     const snapshot = snapshotManager.get();
@@ -38,6 +48,7 @@ export function registerRoutes(
   });
 
   app.get("/v1/config/effective", async (request, reply) => {
+    if (!requireAuth(request, reply)) return;
     const snapshot = snapshotManager.get();
     if (snapshot.platform.security.redact_secrets_in_logs) {
       reply.send({ platform: "redacted" });
@@ -46,16 +57,19 @@ export function registerRoutes(
     reply.send(snapshot);
   });
 
-  app.post("/v1/config/reload", async () => {
+  app.post("/v1/config/reload", async (request, reply) => {
+    if (!requireAuth(request, reply)) return;
     const snapshot = snapshotManager.reload();
     const error = snapshotManager.getLastError();
     if (error) {
-      return { status: "error", message: error, loadedAt: snapshot.loadedAt };
+      reply.send({ status: "error", message: error, loadedAt: snapshot.loadedAt });
+      return;
     }
-    return { status: "ok", loadedAt: snapshot.loadedAt };
+    reply.send({ status: "ok", loadedAt: snapshot.loadedAt });
   });
 
   app.post("/v1/skills/scan", async (request, reply) => {
+    if (!requireAuth(request, reply)) return;
     const body = request.body as { name?: string; content?: string; maxRiskScore?: number };
     if (!body?.content) {
       reply.code(400).send({ error: "content_required" });
@@ -71,6 +85,7 @@ export function registerRoutes(
   });
 
   app.post("/v1/proxy/llm", async (request, reply) => {
+    if (!requireAuth(request, reply)) return;
     const headers = normalizeHeaders(request.headers);
     const body = request.body as Record<string, unknown>;
     const policy = resolvePolicy(request.routerPath ?? request.url, headers, body);
@@ -81,7 +96,8 @@ export function registerRoutes(
       route: request.routerPath ?? request.url,
       headers,
       payload: body,
-      snapshot
+      snapshot,
+      policy
     });
     if (ctx.decision?.action === "block") {
       const override = ctx.workload?.actions?.on_block;
@@ -98,6 +114,7 @@ export function registerRoutes(
   });
 
   app.post("/v1/proxy/mcp", async (request, reply) => {
+    if (!requireAuth(request, reply)) return;
     const headers = normalizeHeaders(request.headers);
     const body = request.body as Record<string, unknown>;
     const policy = resolvePolicy(request.routerPath ?? request.url, headers, body);
@@ -108,7 +125,8 @@ export function registerRoutes(
       route: request.routerPath ?? request.url,
       headers,
       payload: body,
-      snapshot
+      snapshot,
+      policy
     });
     if (ctx.decision?.action === "block") {
       const override = ctx.workload?.actions?.on_block;
@@ -125,6 +143,7 @@ export function registerRoutes(
   });
 
   app.post("/v1/chat/completions", async (request, reply) => {
+    if (!requireAuth(request, reply)) return;
     const headers = normalizeHeaders(request.headers);
     const body = request.body as Record<string, unknown>;
     const policy = resolvePolicy(request.routerPath ?? request.url, headers, body);
@@ -135,7 +154,8 @@ export function registerRoutes(
       route: request.routerPath ?? request.url,
       headers,
       payload: body,
-      snapshot
+      snapshot,
+      policy
     });
     if (ctx.decision?.action === "block") {
       const override = ctx.workload?.actions?.on_block;
@@ -152,6 +172,7 @@ export function registerRoutes(
   });
 
   app.post("/v1/responses", async (request, reply) => {
+    if (!requireAuth(request, reply)) return;
     const headers = normalizeHeaders(request.headers);
     const body = request.body as Record<string, unknown>;
     const policy = resolvePolicy(request.routerPath ?? request.url, headers, body);
@@ -162,22 +183,14 @@ export function registerRoutes(
       route: request.routerPath ?? request.url,
       headers,
       payload: body,
-      snapshot
+      snapshot,
+      policy
     });
     if (ctx.decision?.action === "block") {
       const override = ctx.workload?.actions?.on_block;
       reply
         .code(override?.http_status ?? 403)
         .send({
-          error: "guard_rejected",
-          reasons: ctx.decision.reasonCodes,
-          message: override?.message
-        });
-      return;
-    }
-    await proxyOpenAI(request, reply, snapshot, policy, canonical);
-  });
-}
           error: "guard_rejected",
           reasons: ctx.decision.reasonCodes,
           message: override?.message
