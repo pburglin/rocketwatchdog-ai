@@ -46,7 +46,7 @@ program
   .description("Run a dry-run request through the guard pipeline")
   .option("-c, --config-dir <path>", "Config directory", "configs")
   .requiredOption("-r, --request-file <path>", "Request JSON file")
-  .action((options) => {
+  .action(async (options) => {
     const snapshot = loadConfigDir(options.configDir);
     const requestPayload = JSON.parse(fs.readFileSync(options.requestFile, "utf-8"));
     const headers = normalizeHeaders(requestPayload.headers ?? {});
