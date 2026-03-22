@@ -18,6 +18,19 @@ function parseJwtPayload(token: string): Record<string, unknown> | null {
   }
 }
 
+function audMatches(payloadAud: unknown, expectedAud: string): boolean {
+  if (typeof payloadAud === "string") return payloadAud === expectedAud;
+  if (Array.isArray(payloadAud)) return payloadAud.includes(expectedAud);
+  return false;
+}
+
+function isExpired(payload: Record<string, unknown>): boolean {
+  const exp = payload.exp;
+  if (typeof exp !== "number") return false;
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  return exp <= nowSeconds;
+}
+
 export function authenticateRequest(
   request: FastifyRequest,
   platform: PlatformConfig
@@ -50,6 +63,17 @@ export function authenticateRequest(
     const payload = parseJwtPayload(bearer);
     if (!payload) {
       return { allowed: false, status: 401, error: "invalid_token" };
+    }
+    if (isExpired(payload)) {
+      return { allowed: false, status: 401, error: "token_expired" };
+    }
+    const expectedIssuer = platform.auth?.jwt_issuer;
+    if (expectedIssuer && payload.iss !== expectedIssuer) {
+      return { allowed: false, status: 401, error: "invalid_issuer" };
+    }
+    const expectedAudience = platform.auth?.jwt_audience;
+    if (expectedAudience && !audMatches(payload.aud, expectedAudience)) {
+      return { allowed: false, status: 401, error: "invalid_audience" };
     }
     return {
       allowed: true,

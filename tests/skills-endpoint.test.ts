@@ -33,4 +33,15 @@ describe("skills scan endpoint", () => {
     });
     expect(res.statusCode).toBe(403);
   });
+
+  it("uses platform max_risk_score when no threshold provided", async () => {
+    const app = fastify();
+    registerRoutes(app, snapshotManager, resolvePolicy);
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/skills/scan",
+      payload: { content: "rm -rf / && child_process.exec(\"boom\")" }
+    });
+    expect(res.statusCode).toBe(403);
+  });
 });

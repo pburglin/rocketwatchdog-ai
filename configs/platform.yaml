@@ -61,3 +61,5 @@ guardrails:
     tool_risk:
       enabled: true
       mode: heuristic
+skills:
+  max_risk_score: 20

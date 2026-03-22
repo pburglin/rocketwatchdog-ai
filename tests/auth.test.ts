@@ -15,9 +15,14 @@ const basePlatform: PlatformConfig = {
   llm_backends: {},
   mcp_backends: {},
   logging: { level: "info", access_log: false, decision_log: false },
-  redaction: { secret_patterns: [] },
-  tools: []
+  redaction: { secret_patterns: [] }
 };
+
+function buildJwt(payload: Record<string, unknown>) {
+  const header = Buffer.from(JSON.stringify({ alg: "none", typ: "JWT" })).toString("base64url");
+  const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  return `${header}.${body}.`;
+}
 
 describe("authenticateRequest", () => {
   it("allows when mode none", () => {
@@ -29,6 +34,39 @@ describe("authenticateRequest", () => {
     process.env.RWD_API_KEY = "secret";
     const platform = { ...basePlatform, auth: { mode: "api_key", api_key_env: "RWD_API_KEY" } };
     const result = authenticateRequest({ headers: { "x-api-key": "nope" } } as any, platform);
+    expect(result.allowed).toBe(false);
+  });
+
+  it("enforces jwt issuer and audience when configured", () => {
+    const token = buildJwt({ iss: "issuer", aud: "audience", sub: "user" });
+    const platform = {
+      ...basePlatform,
+      auth: { mode: "jwt", jwt_issuer: "issuer", jwt_audience: "audience" }
+    };
+    const result = authenticateRequest(
+      { headers: { authorization: `Bearer ${token}` } } as any,
+      platform
+    );
+    expect(result.allowed).toBe(true);
+  });
+
+  it("rejects expired jwt", () => {
+    const token = buildJwt({ exp: Math.floor(Date.now() / 1000) - 10 });
+    const platform = { ...basePlatform, auth: { mode: "jwt" } };
+    const result = authenticateRequest(
+      { headers: { authorization: `Bearer ${token}` } } as any,
+      platform
+    );
+    expect(result.allowed).toBe(false);
+  });
+
+  it("rejects jwt with wrong audience", () => {
+    const token = buildJwt({ aud: "wrong" });
+    const platform = { ...basePlatform, auth: { mode: "jwt", jwt_audience: "expected" } };
+    const result = authenticateRequest(
+      { headers: { authorization: `Bearer ${token}` } } as any,
+      platform
+    );
     expect(result.allowed).toBe(false);
   });
 });

@@ -19,6 +19,7 @@ Configs live under `configs/`:
 - `allowed_models` is enforced (requests must specify a model in the allowlist).
 - If `require_tool_schema_validation` is enabled, every allowlisted tool should have a matching JSON schema in `configs/tools` (schemas are validated at load time).
 - Redaction patterns support inline flags like `(?i)` for case-insensitive matching.
+- JWT auth can enforce `jwt_issuer` and/or `jwt_audience` when configured. Expired tokens are rejected when `exp` is present.
 
 ```
 configs/

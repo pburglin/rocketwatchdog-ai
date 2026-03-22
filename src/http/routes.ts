@@ -75,8 +75,9 @@ export function registerRoutes(
       reply.code(400).send({ error: "content_required" });
       return;
     }
+    const snapshot = snapshotManager.get();
     const result = scanSkill(body.content);
-    const threshold = body.maxRiskScore ?? 20;
+    const threshold = body.maxRiskScore ?? snapshot.platform.skills?.max_risk_score ?? 20;
     if (!result.allowed || result.riskScore >= threshold) {
       reply.code(403).send({ ...result, blocked: true, threshold });
       return;

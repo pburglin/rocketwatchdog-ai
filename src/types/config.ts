@@ -64,6 +64,9 @@ export type PlatformConfig = {
   guardrails?: {
     scanners?: Record<string, { enabled: boolean; mode?: string }>;
   };
+  skills?: {
+    max_risk_score?: number;
+  };
   auth?: {
     mode?: "none" | "api_key" | "jwt";
     api_key_env?: string;
