@@ -1,4 +1,4 @@
-import type { ConfigSnapshot, EffectivePolicy } from "../types/config.js";
+import type { ConfigSnapshot, EffectivePolicy, WorkloadConfig } from "../types/config.js";
 import type { CanonicalRequest } from "../types/canonical.js";
 import type { GuardDecision } from "../types/decisions.js";
 

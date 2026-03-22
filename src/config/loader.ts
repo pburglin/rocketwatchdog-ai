@@ -4,6 +4,7 @@ import yaml from "yaml";
 import Ajv, { type ErrorObject } from "ajv";
 import addFormats from "ajv-formats";
 import type { ConfigSnapshot, PlatformConfig, WorkloadConfig } from "../types/config.js";
+import { compileRedactionPattern } from "../core/guard/redaction.js";
 
 const schemaDir = path.resolve(process.cwd(), "schemas");
 
@@ -63,6 +64,7 @@ export function loadConfigDir(configDir: string): ConfigSnapshot {
 
   validateToolSchemas(toolSchemas);
   validateSnapshot(platform, workloads, toolSchemas);
+  validateRedactionPatterns(platform);
 
   return {
     platform,
@@ -154,6 +156,21 @@ function validateSnapshot(
           `Workload ${workload.id} requires tool schemas but missing: ${missingSchemas.join(", ")}`
         );
       }
+    }
+  }
+}
+
+function validateRedactionPatterns(platform: PlatformConfig) {
+  const patterns = [
+    ...(platform.redaction.secret_patterns ?? []),
+    ...(platform.redaction.pii_patterns ?? [])
+  ];
+  for (const pattern of patterns) {
+    try {
+      compileRedactionPattern(pattern);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "unknown_pattern_error";
+      throw new Error(`Invalid redaction pattern (${pattern}): ${message}`);
     }
   }
 }

@@ -18,6 +18,7 @@ Configs live under `configs/`:
 - Workload IDs must be unique, and the configured default workload must exist.
 - `allowed_models` is enforced (requests must specify a model in the allowlist).
 - If `require_tool_schema_validation` is enabled, every allowlisted tool should have a matching JSON schema in `configs/tools` (schemas are validated at load time).
+- Redaction patterns support inline flags like `(?i)` for case-insensitive matching.
 
 ```
 configs/
@@ -48,6 +49,7 @@ configs/
 
 - Request guards run on inbound payloads; output guards run only when a `response` field is present.
 - Guard decisions preserve earlier block results unless an output response is explicitly evaluated.
+- If redaction occurs without a block reason, the guard decision is `allow_with_annotations` and includes `{ redacted: true }`.
 
 ## Docker
 

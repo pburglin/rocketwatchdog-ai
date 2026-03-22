@@ -27,11 +27,14 @@ export class OutputGuardsStage implements PipelineStage<RequestContext> {
       reasons.push("OUTPUT_TOO_LONG");
     }
 
+    const action = reasons.length > 0 ? "block" : result.decision.action;
+    const severity = reasons.length > 0 ? "high" : result.decision.severity;
+
     ctx.decision = {
       ...result.decision,
       reasonCodes: reasons,
-      action: reasons.length === 0 ? "allow" : "block",
-      severity: reasons.length === 0 ? "info" : result.decision.severity
+      action,
+      severity
     };
     return ctx;
   }
