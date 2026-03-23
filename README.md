@@ -46,6 +46,72 @@ configs/
 - `POST /v1/responses`
 - `POST /v1/skills/scan`
 
+## Quick demo (main features)
+
+### 1) Install deps + start the server
+
+```bash
+npm install
+npm run build
+node dist/index.js
+```
+
+Expected: server listening on `http://0.0.0.0:8080` with `/healthz` returning `{"status":"ok"}`.
+
+### 2) Health check
+
+```bash
+curl http://localhost:8080/healthz
+```
+
+Expected:
+
+```json
+{"status":"ok"}
+```
+
+### 3) LLM proxy with workload selection + guardrails
+
+```bash
+curl -X POST http://localhost:8080/v1/proxy/llm \
+  -H "content-type: application/json" \
+  -H "x-rwd-workload: public-chat" \
+  -d '{"model":"gpt-main","messages":[{"role":"user","content":"hello"}]}'
+```
+
+Expected: a JSON response from the configured LLM backend. If the prompt violates guards, you’ll receive `{"error":"guard_rejected", "reasons":[...]}`.
+
+### 4) MCP proxy (tools)
+
+```bash
+curl -X POST http://localhost:8080/v1/proxy/mcp \
+  -H "content-type: application/json" \
+  -H "x-rwd-workload: sensitive-mcp" \
+  -d '{"tool":"read_customer_record","arguments":{"id":"123"}}'
+```
+
+Expected: MCP backend response or `guard_rejected` if the tool is disallowed or schema validation fails.
+
+### 5) Skills security scan
+
+```bash
+curl -X POST http://localhost:8080/v1/skills/scan \
+  -H "content-type: application/json" \
+  -d '{"content":"rm -rf /"}'
+```
+
+Expected:
+
+```json
+{"allowed":false,"riskScore":10,"reasons":["DESTRUCTIVE_COMMAND"],"blocked":true,"threshold":20}
+```
+
+## Troubleshooting
+
+- **401/403 from protected endpoints**: verify `platform.auth` settings and include `x-api-key` or `Authorization: Bearer ...` headers if enabled.
+- **LLM/MCP backend errors**: confirm backend URLs and env vars (e.g., `ROCKETWATCHDOG_LLM_API_KEY`, `ROCKETWATCHDOG_MCP_TOKEN`).
+- **Guard rejections**: inspect `reasons` in the response; adjust workload guard settings in `configs/workloads/*.yaml`.
+- **Config reload fails**: hit `/v1/config/reload` and check the error in the response; invalid schemas keep the last-known-good snapshot.
 ## Guard pipeline notes
 
 - Request guards run on inbound payloads; output guards run only when a `response` field is present.
