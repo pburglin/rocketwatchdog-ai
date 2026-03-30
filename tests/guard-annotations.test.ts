@@ -27,6 +27,7 @@ describe("guard annotations", () => {
     const ctx = buildContext({
       messages: [{ role: "user", content: "api_key: SECRET" }]
     });
+    ctx.policy.input_guards.secret_redaction = true;
     const stage = new InputGuardsStage();
     await stage.run(ctx);
     expect(ctx.decision?.action).toBe("allow_with_annotations");

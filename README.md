@@ -17,6 +17,7 @@ Configs live under `configs/`:
 
 - Workload IDs must be unique, and the configured default workload must exist.
 - `allowed_models` is enforced (requests must specify a model in the allowlist).
+- If `require_tool_allowlist` is enabled and `allowed_tools` is empty, any tool usage is rejected with `TOOL_ALLOWLIST_EMPTY`.
 - If `require_tool_schema_validation` is enabled, every allowlisted tool should have a matching JSON schema in `configs/tools` (schemas are validated at load time).
 - Redaction patterns support inline flags like `(?i)` for case-insensitive matching.
 - JWT auth can enforce `jwt_issuer` and/or `jwt_audience` when configured. Expired tokens are rejected when `exp` is present.
@@ -106,6 +107,10 @@ Expected:
 {"allowed":false,"riskScore":10,"reasons":["DESTRUCTIVE_COMMAND"],"blocked":true,"threshold":20}
 ```
 
+Notes:
+- Set `maxRiskScore` in the request or `platform.skills.max_risk_score` to tune the threshold.
+- `allowed` is evaluated against the active threshold.
+
 ## Troubleshooting
 
 - **401/403 from protected endpoints**: verify `platform.auth` settings and include `x-api-key` or `Authorization: Bearer ...` headers if enabled.
@@ -115,6 +120,7 @@ Expected:
 ## Guard pipeline notes
 
 - Request guards run on inbound payloads; output guards run only when a `response` field is present.
+- Input secret redaction is controlled by `guards.input.secret_redaction` (defaults off). Output redaction remains under `guards.output`.
 - Guard decisions preserve earlier block results unless an output response is explicitly evaluated.
 - If redaction occurs without a block reason, the guard decision is `allow_with_annotations` and includes `{ redacted: true }`.
 

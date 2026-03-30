@@ -2,6 +2,7 @@ import type { EffectivePolicy, PlatformConfig } from "../../types/config.js";
 import type { GuardDecision } from "../../types/decisions.js";
 import { normalizeUnicode } from "./unicode.js";
 import { detectPromptInjection } from "./injection.js";
+import { detectOwaspInputRisks } from "./owasp.js";
 import { redactSecrets } from "./redaction.js";
 import { validateTools, type ToolDefinition, type ToolInvocation } from "./tools.js";
 
@@ -41,8 +42,17 @@ export function runGuards(
     }
   }
 
-  const shouldRedactInput =
-    policy.input_guards.secret_redaction ?? policy.output_guards.secret_redaction;
+  if (policy.input_guards.llm_security_scan) {
+    reasons.push(
+      ...detectOwaspInputRisks(
+        workingText,
+        policy.max_prompt_chars,
+        input.toolInvocations
+      )
+    );
+  }
+
+  const shouldRedactInput = policy.input_guards.secret_redaction ?? false;
   const redaction = shouldRedactInput
     ? redactSecrets(workingText, platform.redaction.secret_patterns)
     : { redacted: workingText, hits: 0 };

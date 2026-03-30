@@ -76,13 +76,13 @@ export function registerRoutes(
       return;
     }
     const snapshot = snapshotManager.get();
-    const result = scanSkill(body.content);
     const threshold = body.maxRiskScore ?? snapshot.platform.skills?.max_risk_score ?? 20;
+    const result = scanSkill(body.content, threshold);
     if (!result.allowed || result.riskScore >= threshold) {
-      reply.code(403).send({ ...result, blocked: true, threshold });
+      reply.code(403).send({ ...result, blocked: true });
       return;
     }
-    reply.send({ ...result, blocked: false, threshold });
+    reply.send({ ...result, blocked: false });
   });
 
   app.post("/v1/proxy/llm", async (request, reply) => {

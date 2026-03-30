@@ -35,7 +35,7 @@ const policy: EffectivePolicy = {
   workload_id: "default",
   level: "L1",
   max_prompt_chars: 12000,
-  input_guards: { heuristic_prompt_injection: true, schema_validation: true },
+  input_guards: { heuristic_prompt_injection: true, schema_validation: true, secret_redaction: true },
   output_guards: { secret_redaction: true, pii_redaction: false },
   tool_guards: { require_tool_allowlist: false, require_tool_schema_validation: false },
   allowed_llm_backends: [],

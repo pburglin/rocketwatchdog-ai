@@ -10,3 +10,4 @@ RocketWatchDog.ai must act as a gateway for skill installation and downloads.
 - Integrate skill scanning into the policy/guard pipeline.
 - Support a “pre-install” scan endpoint that can be called by RocketClaw or other agents.
 - Allow a platform-configured max risk score (platform.skills.max_risk_score) as the default threshold.
+- Surface the threshold used in the scan response.

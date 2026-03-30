@@ -66,7 +66,8 @@ export async function proxyOpenAI(
   }
 
   let forwardBody = body;
-  if (policy.output_guards.secret_redaction) {
+  const shouldRedactInput = policy.input_guards.secret_redaction ?? false;
+  if (shouldRedactInput) {
     const { redactedMessages } = redactMessages(messages, snapshot.platform.redaction.secret_patterns);
     forwardBody = { ...body, messages: redactedMessages };
   }

@@ -2,6 +2,7 @@ type ScanResult = {
   allowed: boolean;
   riskScore: number;
   reasons: string[];
+  threshold: number;
 };
 
 const riskyPatterns = [
@@ -14,7 +15,7 @@ const riskyPatterns = [
   { pattern: /fetch\(/gi, reason: "NETWORK_ACCESS" }
 ];
 
-export function scanSkill(content: string): ScanResult {
+export function scanSkill(content: string, threshold = 20): ScanResult {
   let riskScore = 0;
   const reasons: string[] = [];
   for (const rule of riskyPatterns) {
@@ -23,6 +24,6 @@ export function scanSkill(content: string): ScanResult {
       reasons.push(rule.reason);
     }
   }
-  const allowed = riskScore < 20;
-  return { allowed, riskScore, reasons };
+  const allowed = riskScore < threshold;
+  return { allowed, riskScore, reasons, threshold };
 }

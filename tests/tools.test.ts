@@ -75,4 +75,15 @@ describe("validateTools", () => {
     );
     expect(result.allowed).toBe(true);
   });
+
+  it("rejects tool usage when allowlist is empty", () => {
+    const result = validateTools(
+      { ...policy, allowed_tools: [] },
+      [{ name: "allowed" }],
+      [{ name: "allowed", arguments: { id: "123" } }],
+      toolSchemas
+    );
+    expect(result.allowed).toBe(false);
+    expect(result.reasons).toContain("TOOL_ALLOWLIST_EMPTY");
+  });
 });

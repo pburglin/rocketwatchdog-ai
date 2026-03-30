@@ -45,6 +45,9 @@ export function loadConfigDir(configDir: string): ConfigSnapshot {
   const workloadFiles = fs
     .readdirSync(workloadsDir)
     .filter((file) => file.endsWith(".yaml") || file.endsWith(".yml"));
+  if (workloadFiles.length === 0) {
+    throw new Error(`No workload configs found in ${workloadsDir}`);
+  }
   const workloads = workloadFiles.map((file) => {
     const workload = parseYaml(path.join(workloadsDir, file)) as WorkloadConfig;
     validateOrThrow(validateWorkload, workload, `workloads/${file}`);
@@ -93,6 +96,17 @@ function validateToolSchemas(toolSchemas: Record<string, Record<string, unknown>
   }
 }
 
+function findDuplicates(items: string[] | undefined) {
+  if (!items || items.length === 0) return [];
+  const seen = new Set<string>();
+  const duplicates = new Set<string>();
+  for (const item of items) {
+    if (seen.has(item)) duplicates.add(item);
+    seen.add(item);
+  }
+  return [...duplicates];
+}
+
 function validateSnapshot(
   platform: PlatformConfig,
   workloads: WorkloadConfig[],
@@ -134,7 +148,27 @@ function validateSnapshot(
       }
     }
 
+    const llmDuplicates = findDuplicates(policy.allowed_llm_backends);
+    if (llmDuplicates.length > 0) {
+      throw new Error(
+        `Workload ${workload.id} has duplicate allowed_llm_backends: ${llmDuplicates.join(", ")}`
+      );
+    }
+
+    const mcpDuplicates = findDuplicates(policy.allowed_mcp_backends);
+    if (mcpDuplicates.length > 0) {
+      throw new Error(
+        `Workload ${workload.id} has duplicate allowed_mcp_backends: ${mcpDuplicates.join(", ")}`
+      );
+    }
+
     if (policy.allowed_models?.length) {
+      const modelDuplicates = findDuplicates(policy.allowed_models);
+      if (modelDuplicates.length > 0) {
+        throw new Error(
+          `Workload ${workload.id} has duplicate allowed_models: ${modelDuplicates.join(", ")}`
+        );
+      }
       const backendsToCheck = allowedBackends.length > 0 ? allowedBackends : Object.keys(platform.llm_backends);
       const availableModels = new Set<string>();
       for (const name of backendsToCheck) {
@@ -149,12 +183,28 @@ function validateSnapshot(
       }
     }
 
-    if (guards?.tools?.require_tool_schema_validation && policy.allowed_tools?.length) {
-      const missingSchemas = policy.allowed_tools.filter((tool) => !toolSchemas[tool]);
-      if (missingSchemas.length > 0) {
+    if (policy.allowed_tools?.length) {
+      const duplicates = findDuplicates(policy.allowed_tools);
+      if (duplicates.length > 0) {
         throw new Error(
-          `Workload ${workload.id} requires tool schemas but missing: ${missingSchemas.join(", ")}`
+          `Workload ${workload.id} has duplicate allowed_tools: ${duplicates.join(", ")}`
         );
+      }
+    }
+
+    if (guards?.tools?.require_tool_schema_validation) {
+      if (Object.keys(toolSchemas).length === 0) {
+        throw new Error(
+          `Workload ${workload.id} requires tool schemas but configs/tools is empty`
+        );
+      }
+      if (policy.allowed_tools?.length) {
+        const missingSchemas = policy.allowed_tools.filter((tool) => !toolSchemas[tool]);
+        if (missingSchemas.length > 0) {
+          throw new Error(
+            `Workload ${workload.id} requires tool schemas but missing: ${missingSchemas.join(", ")}`
+          );
+        }
       }
     }
   }

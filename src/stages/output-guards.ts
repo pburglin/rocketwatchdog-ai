@@ -1,6 +1,8 @@
 import type { PipelineStage } from "../pipeline/stage.js";
 import type { RequestContext } from "../pipeline/context.js";
 import { runGuards } from "../core/guard/index.js";
+import { redactSecrets } from "../core/guard/redaction.js";
+import { detectOwaspOutputRisks } from "../core/guard/owasp.js";
 import { extractToolInvocations } from "../utils/extract.js";
 
 export class OutputGuardsStage implements PipelineStage<RequestContext> {
@@ -27,14 +29,32 @@ export class OutputGuardsStage implements PipelineStage<RequestContext> {
       reasons.push("OUTPUT_TOO_LONG");
     }
 
+    let outputRedactionHits = 0;
+    if (ctx.policy.output_guards.secret_redaction || ctx.policy.output_guards.pii_redaction) {
+      const patterns = [
+        ...ctx.snapshot.platform.redaction.secret_patterns,
+        ...(ctx.policy.output_guards.pii_redaction
+          ? ctx.snapshot.platform.redaction.pii_patterns ?? []
+          : [])
+      ];
+      outputRedactionHits = redactSecrets(response, patterns).hits;
+    }
+
+    if (ctx.policy.output_guards.output_policy_scan) {
+      reasons.push(...detectOwaspOutputRisks(response, outputRedactionHits));
+    }
+
     const action = reasons.length > 0 ? "block" : result.decision.action;
     const severity = reasons.length > 0 ? "high" : result.decision.severity;
+
+    const shouldAnnotateRedaction = outputRedactionHits > 0 && action !== "block";
 
     ctx.decision = {
       ...result.decision,
       reasonCodes: reasons,
-      action,
-      severity
+      action: shouldAnnotateRedaction ? "allow_with_annotations" : action,
+      severity,
+      annotations: shouldAnnotateRedaction ? { redacted: true } : result.decision.annotations
     };
     return ctx;
   }

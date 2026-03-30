@@ -67,14 +67,15 @@ export async function proxyMcp(
   }
 
   let forwardBody = body;
-  if (policy.output_guards.secret_redaction && typeof inputText === "string") {
+  const shouldRedactInput = policy.input_guards.secret_redaction ?? false;
+  if (shouldRedactInput && typeof inputText === "string") {
     const { redacted } = redactSecrets(inputText, snapshot.platform.redaction.secret_patterns);
     if (typeof body.prompt === "string") {
       forwardBody = { ...forwardBody, prompt: redacted };
     }
   }
 
-  if (policy.output_guards.secret_redaction) {
+  if (shouldRedactInput) {
     const params = body.params;
     if (params && typeof params === "object") {
       const messages = (params as { messages?: unknown }).messages;
