@@ -24,11 +24,24 @@ export function registerRoutes(app, snapshotManager, resolvePolicy) {
     app.get("/healthz", async () => ({ status: "ok" }));
     app.get("/readyz", async () => {
         const snapshot = snapshotManager.get();
+        const status = snapshotManager.getStatus();
         return {
-            status: "ready",
+            status: status.lastError ? "degraded" : "ready",
             llm_backends: Object.keys(snapshot.platform.llm_backends ?? {}),
-            mcp_backends: Object.keys(snapshot.platform.mcp_backends ?? {})
+            mcp_backends: Object.keys(snapshot.platform.mcp_backends ?? {}),
+            config: {
+                loadedAt: status.loadedAt,
+                lastReloadAttemptAt: status.lastReloadAttemptAt,
+                lastReloadSucceededAt: status.lastReloadSucceededAt,
+                lastError: status.lastError,
+                isUsingLastKnownGood: status.isUsingLastKnownGood
+            }
         };
+    });
+    app.get("/v1/config/status", async (request, reply) => {
+        if (!requireAuth(request, reply))
+            return;
+        reply.send(snapshotManager.getStatus());
     });
     app.get("/v1/config/effective", async (request, reply) => {
         if (!requireAuth(request, reply))

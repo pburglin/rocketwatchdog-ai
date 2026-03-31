@@ -3,9 +3,22 @@ import path from "node:path";
 import type { ConfigSnapshot } from "../types/config.js";
 import { loadConfigDir } from "./loader.js";
 
+export type ConfigStatus = {
+  configDir: string;
+  loadedAt: string | null;
+  lastReloadAttemptAt: string | null;
+  lastReloadSucceededAt: string | null;
+  lastError: string | null;
+  isUsingLastKnownGood: boolean;
+  workloadCount: number;
+  toolSchemaCount: number;
+};
+
 export class ConfigSnapshotManager {
   private current: ConfigSnapshot | null = null;
   private lastError: string | null = null;
+  private lastReloadAttemptAt: string | null = null;
+  private lastReloadSucceededAt: string | null = null;
 
   constructor(private configDir: string) {}
 
@@ -13,14 +26,17 @@ export class ConfigSnapshotManager {
     const snapshot = loadConfigDir(this.configDir);
     this.current = snapshot;
     this.lastError = null;
+    this.lastReloadSucceededAt = snapshot.loadedAt;
     return snapshot;
   }
 
   reload(): ConfigSnapshot {
+    this.lastReloadAttemptAt = new Date().toISOString();
     try {
       const snapshot = loadConfigDir(this.configDir);
       this.current = snapshot;
       this.lastError = null;
+      this.lastReloadSucceededAt = snapshot.loadedAt;
       return snapshot;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -34,6 +50,19 @@ export class ConfigSnapshotManager {
 
   getLastError(): string | null {
     return this.lastError;
+  }
+
+  getStatus(): ConfigStatus {
+    return {
+      configDir: this.configDir,
+      loadedAt: this.current?.loadedAt ?? null,
+      lastReloadAttemptAt: this.lastReloadAttemptAt,
+      lastReloadSucceededAt: this.lastReloadSucceededAt,
+      lastError: this.lastError,
+      isUsingLastKnownGood: this.current !== null && this.lastError !== null,
+      workloadCount: this.current?.workloads.length ?? 0,
+      toolSchemaCount: Object.keys(this.current?.toolSchemas ?? {}).length
+    };
   }
 
   get(): ConfigSnapshot {

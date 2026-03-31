@@ -41,6 +41,7 @@ configs/
 
 - `GET /healthz`
 - `GET /readyz`
+- `GET /v1/config/status`
 - `GET /v1/config/effective`
 - `POST /v1/config/reload`
 - `POST /v1/proxy/llm`
@@ -60,6 +61,8 @@ node dist/index.js
 ```
 
 Expected: server listening on `http://0.0.0.0:8080` with `/healthz` returning `{"status":"ok"}`.
+
+`/readyz` now reports config health as well: `ready` when the active config is healthy, or `degraded` when the service is still running on the last-known-good snapshot after a failed reload.
 
 ### 2) Health check
 
@@ -119,6 +122,7 @@ Notes:
 - **LLM/MCP backend errors**: confirm backend URLs and env vars (e.g., `ROCKETWATCHDOG_LLM_API_KEY`, `ROCKETWATCHDOG_MCP_TOKEN`).
 - **Guard rejections**: inspect `reasons` in the response; adjust workload guard settings in `configs/workloads/*.yaml`.
 - **Config reload fails**: hit `/v1/config/reload` and check the error in the response; invalid schemas, duplicate allowlist entries, or missing required tool schemas keep the last-known-good snapshot.
+- **Need to inspect config health quickly**: hit `/v1/config/status` for reload timestamps, last error, and whether the server is currently serving a last-known-good config snapshot.
 ## Guard pipeline notes
 
 - Request guards run on inbound payloads; output guards run only when a `response` field is present.

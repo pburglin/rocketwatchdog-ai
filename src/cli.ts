@@ -80,6 +80,18 @@ program
   });
 
 program
+  .command("config-status")
+  .description("Fetch config status from the running server")
+  .option("-c, --config-dir <path>", "Config directory", "configs")
+  .action(async (options) => {
+    const snapshot = loadConfigDir(options.configDir);
+    const url = `http://${snapshot.platform.server.host}:${snapshot.platform.server.port}/v1/config/status`;
+    const response = await fetch(url);
+    const text = await response.text();
+    console.log(text);
+  });
+
+program
   .command("reload")
   .description("Call the config reload endpoint")
   .option("-c, --config-dir <path>", "Config directory", "configs")

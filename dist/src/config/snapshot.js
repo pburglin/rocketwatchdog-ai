@@ -5,6 +5,8 @@ export class ConfigSnapshotManager {
     configDir;
     current = null;
     lastError = null;
+    lastReloadAttemptAt = null;
+    lastReloadSucceededAt = null;
     constructor(configDir) {
         this.configDir = configDir;
     }
@@ -12,13 +14,16 @@ export class ConfigSnapshotManager {
         const snapshot = loadConfigDir(this.configDir);
         this.current = snapshot;
         this.lastError = null;
+        this.lastReloadSucceededAt = snapshot.loadedAt;
         return snapshot;
     }
     reload() {
+        this.lastReloadAttemptAt = new Date().toISOString();
         try {
             const snapshot = loadConfigDir(this.configDir);
             this.current = snapshot;
             this.lastError = null;
+            this.lastReloadSucceededAt = snapshot.loadedAt;
             return snapshot;
         }
         catch (err) {
@@ -33,6 +38,18 @@ export class ConfigSnapshotManager {
     }
     getLastError() {
         return this.lastError;
+    }
+    getStatus() {
+        return {
+            configDir: this.configDir,
+            loadedAt: this.current?.loadedAt ?? null,
+            lastReloadAttemptAt: this.lastReloadAttemptAt,
+            lastReloadSucceededAt: this.lastReloadSucceededAt,
+            lastError: this.lastError,
+            isUsingLastKnownGood: this.current !== null && this.lastError !== null,
+            workloadCount: this.current?.workloads.length ?? 0,
+            toolSchemaCount: Object.keys(this.current?.toolSchemas ?? {}).length
+        };
     }
     get() {
         if (!this.current) {
