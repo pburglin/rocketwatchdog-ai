@@ -16,7 +16,7 @@ export class OutputGuardsStage implements PipelineStage<RequestContext> {
 
     const toolInvocations = extractToolInvocations(ctx.payload);
     const result = runGuards(
-      { text: response, tools: undefined, toolInvocations },
+      { text: response, ...(toolInvocations ? { toolInvocations } : {}) },
       ctx.policy,
       ctx.snapshot.platform,
       ctx.snapshot.toolSchemas
@@ -54,7 +54,11 @@ export class OutputGuardsStage implements PipelineStage<RequestContext> {
       reasonCodes: reasons,
       action: shouldAnnotateRedaction ? "allow_with_annotations" : action,
       severity,
-      annotations: shouldAnnotateRedaction ? { redacted: true } : result.decision.annotations
+      ...((shouldAnnotateRedaction
+        ? { annotations: { redacted: true } }
+        : result.decision.annotations
+          ? { annotations: result.decision.annotations }
+          : {}) as Record<string, unknown>)
     };
     return ctx;
   }

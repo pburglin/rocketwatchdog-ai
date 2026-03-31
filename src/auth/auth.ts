@@ -10,8 +10,10 @@ export type AuthContext = {
 function parseJwtPayload(token: string): Record<string, unknown> | null {
   const parts = token.split(".");
   if (parts.length < 2) return null;
+  const payloadPart = parts[1];
+  if (!payloadPart) return null;
   try {
-    const payload = Buffer.from(parts[1], "base64").toString("utf-8");
+    const payload = Buffer.from(payloadPart, "base64").toString("utf-8");
     return JSON.parse(payload) as Record<string, unknown>;
   } catch {
     return null;
@@ -79,9 +81,9 @@ export function authenticateRequest(
       allowed: true,
       status: 200,
       context: {
-        userId: typeof payload.sub === "string" ? payload.sub : undefined,
-        roles: Array.isArray(payload.roles) ? (payload.roles as string[]) : undefined,
-        sourceApp: typeof payload.iss === "string" ? payload.iss : undefined
+        ...(typeof payload.sub === "string" ? { userId: payload.sub } : {}),
+        ...(Array.isArray(payload.roles) ? { roles: payload.roles as string[] } : {}),
+        ...(typeof payload.iss === "string" ? { sourceApp: payload.iss } : {})
       }
     };
   }

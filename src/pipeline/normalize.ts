@@ -9,18 +9,23 @@ export function buildCanonicalRequest(
 ): CanonicalRequest {
   const messages = Array.isArray(payload.messages) ? (payload.messages as Record<string, unknown>[]) : [];
   const metadata = typeof payload.meta === "object" && payload.meta ? (payload.meta as Record<string, unknown>) : {};
+  const sourceApp = headers["x-rwd-source-app"];
+  const userId = typeof metadata.userId === "string" ? metadata.userId : undefined;
+  const sessionId = typeof metadata.sessionId === "string" ? metadata.sessionId : undefined;
+  const workloadHint = typeof metadata.workload === "string" ? metadata.workload : undefined;
+  const promptText = typeof payload.prompt === "string" ? payload.prompt : undefined;
   return {
     requestId: request.requestId ?? randomUUID(),
     timestamp: new Date().toISOString(),
-    sourceApp: headers["x-rwd-source-app"],
+    ...(sourceApp ? { sourceApp } : {}),
     route: request.routerPath ?? request.url,
     headers,
-    clientIp: request.ip,
-    userId: metadata.userId as string | undefined,
-    sessionId: metadata.sessionId as string | undefined,
-    workloadHint: metadata.workload as string | undefined,
+    ...(request.ip ? { clientIp: request.ip } : {}),
+    ...(userId ? { userId } : {}),
+    ...(sessionId ? { sessionId } : {}),
+    ...(workloadHint ? { workloadHint } : {}),
     payload,
-    promptText: typeof payload.prompt === "string" ? payload.prompt : undefined,
+    ...(promptText ? { promptText } : {}),
     messages,
     metadata
   };

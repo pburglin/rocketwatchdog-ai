@@ -25,11 +25,14 @@ function resolvePolicy(
   payload?: Record<string, unknown>
 ) {
   const current = snapshotManager.get();
+  const sourceAppHeader = current.platform.routing.source_app_header?.toLowerCase();
   const workload = resolveWorkload(current.platform, current.workloads, {
     route,
     headers,
-    payload,
-    sourceApp: headers[current.platform.routing.source_app_header?.toLowerCase() ?? ""]
+    ...(payload ? { payload } : {}),
+    ...(sourceAppHeader && headers[sourceAppHeader]
+      ? { sourceApp: headers[sourceAppHeader] }
+      : {})
   });
   if (!workload) {
     throw new Error("No workload resolved");

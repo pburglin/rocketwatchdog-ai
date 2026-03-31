@@ -20,9 +20,10 @@ export interface ToolValidationResult {
 
 type AjvClass = typeof import("ajv").default;
 const AjvCtor = Ajv as unknown as AjvClass;
+const applyFormats = addFormats as unknown as (ajvInstance: InstanceType<AjvClass>) => void;
 
 const ajv = new AjvCtor({ allErrors: true, strict: false });
-addFormats(ajv);
+applyFormats(ajv);
 const validatorCache = new WeakMap<object, ValidateFunction>();
 
 const writeIntentPattern = /\b(write|delete|remove|update|create|exec|run|shell|sql|post|put|patch|upload|download|file|database)\b/i;

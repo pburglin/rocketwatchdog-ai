@@ -91,6 +91,7 @@ describe("owasp guard detection", () => {
       snapshot,
       policy: mergeEffectivePolicy(snapshot.platform, workload)
     };
+    if (!ctx.policy) throw new Error("policy missing from test context");
     ctx.policy.output_guards.output_policy_scan = true;
     const stage = new OutputGuardsStage();
     await stage.run(ctx);

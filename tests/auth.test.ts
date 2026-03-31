@@ -32,14 +32,17 @@ describe("authenticateRequest", () => {
 
   it("rejects invalid api key", () => {
     process.env.RWD_API_KEY = "secret";
-    const platform = { ...basePlatform, auth: { mode: "api_key", api_key_env: "RWD_API_KEY" } };
+    const platform: PlatformConfig = {
+      ...basePlatform,
+      auth: { mode: "api_key", api_key_env: "RWD_API_KEY" }
+    };
     const result = authenticateRequest({ headers: { "x-api-key": "nope" } } as any, platform);
     expect(result.allowed).toBe(false);
   });
 
   it("enforces jwt issuer and audience when configured", () => {
     const token = buildJwt({ iss: "issuer", aud: "audience", sub: "user" });
-    const platform = {
+    const platform: PlatformConfig = {
       ...basePlatform,
       auth: { mode: "jwt", jwt_issuer: "issuer", jwt_audience: "audience" }
     };
@@ -52,7 +55,7 @@ describe("authenticateRequest", () => {
 
   it("rejects expired jwt", () => {
     const token = buildJwt({ exp: Math.floor(Date.now() / 1000) - 10 });
-    const platform = { ...basePlatform, auth: { mode: "jwt" } };
+    const platform: PlatformConfig = { ...basePlatform, auth: { mode: "jwt" } };
     const result = authenticateRequest(
       { headers: { authorization: `Bearer ${token}` } } as any,
       platform
@@ -62,7 +65,10 @@ describe("authenticateRequest", () => {
 
   it("rejects jwt with wrong audience", () => {
     const token = buildJwt({ aud: "wrong" });
-    const platform = { ...basePlatform, auth: { mode: "jwt", jwt_audience: "expected" } };
+    const platform: PlatformConfig = {
+      ...basePlatform,
+      auth: { mode: "jwt", jwt_audience: "expected" }
+    };
     const result = authenticateRequest(
       { headers: { authorization: `Bearer ${token}` } } as any,
       platform

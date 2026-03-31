@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import yaml from "yaml";
-import Ajv, { type ErrorObject } from "ajv";
+import Ajv, { type ErrorObject, type ValidateFunction } from "ajv";
 import addFormats from "ajv-formats";
 import type { ConfigSnapshot, PlatformConfig, WorkloadConfig } from "../types/config.js";
 import { compileRedactionPattern } from "../core/guard/redaction.js";
@@ -226,7 +226,7 @@ function validateRedactionPatterns(platform: PlatformConfig) {
 }
 
 function validateOrThrow(
-  validator: ((data: unknown) => boolean) | undefined,
+  validator: ValidateFunction | undefined,
   data: unknown,
   name: string
 ) {

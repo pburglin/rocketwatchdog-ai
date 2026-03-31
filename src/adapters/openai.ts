@@ -1,5 +1,5 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { fetch } from "undici";
+import { fetch as undiciFetch } from "undici";
 import type { ConfigSnapshot, EffectivePolicy } from "../types/config.js";
 import type { CanonicalRequest } from "../types/canonical.js";
 import { runGuards } from "../core/guard/index.js";
@@ -15,6 +15,7 @@ export async function proxyOpenAI(
   policy: EffectivePolicy,
   canonical: CanonicalRequest
 ) {
+  const fetchImpl = globalThis.fetch ?? undiciFetch;
   const backendName = policy.allowed_llm_backends[0];
   if (!backendName) {
     reply.code(403).send({ error: "llm_backend_not_allowed" });
@@ -82,7 +83,7 @@ export async function proxyOpenAI(
   }
 
   const upstream = new URL("/v1/chat/completions", backend.base_url).toString();
-  const response = await fetch(upstream, {
+  const response = await fetchImpl(upstream, {
     method: "POST",
     headers,
     body: JSON.stringify(forwardBody),

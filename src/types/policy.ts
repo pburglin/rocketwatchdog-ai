@@ -21,7 +21,7 @@ export function mergeEffectivePolicy(
   return {
     workload_id: workload.id,
     level: policy.level ?? platform.security.default_level,
-    data_classification: policy.data_classification,
+    ...(policy.data_classification ? { data_classification: policy.data_classification } : {}),
     allowed_llm_backends: policy.allowed_llm_backends ?? [],
     allowed_models: policy.allowed_models ?? [],
     allowed_mcp_backends: policy.allowed_mcp_backends ?? [],

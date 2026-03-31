@@ -77,7 +77,7 @@ export function runGuards(
         : "allow",
     reasonCodes: reasons,
     severity: hasReasons ? "high" : hasRedactions ? "low" : "info",
-    annotations: hasRedactions ? { redacted: true } : undefined
+    ...(hasRedactions ? { annotations: { redacted: true } } : {})
   };
 
   return {

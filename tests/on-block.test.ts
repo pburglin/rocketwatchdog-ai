@@ -2,10 +2,11 @@ import { describe, expect, it } from "vitest";
 import fastify from "fastify";
 import { registerRoutes } from "../src/http/routes.js";
 import { ConfigSnapshotManager } from "../src/config/snapshot.js";
+import type { EffectivePolicy } from "../src/types/config.js";
 
 const snapshotManager = new ConfigSnapshotManager("configs");
 
-const resolvePolicy = () => ({
+const resolvePolicy = (): EffectivePolicy => ({
   workload_id: "default",
   level: "L1",
   data_classification: "public",

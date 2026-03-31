@@ -14,7 +14,7 @@ export function compileRedactionPattern(pattern: string): RegExp {
   let source = pattern;
   const flags = new Set(["g"]);
   if (match) {
-    for (const flag of match[1]) {
+    for (const flag of match[1] ?? "") {
       if (supportedFlags.has(flag)) {
         flags.add(flag);
       }

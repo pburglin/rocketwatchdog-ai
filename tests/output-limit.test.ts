@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { proxyOpenAI } from "../src/adapters/openai.js";
 import type { ConfigSnapshot, EffectivePolicy } from "../src/types/config.js";
 
@@ -23,13 +23,16 @@ const snapshot: ConfigSnapshot = {
     },
     mcp_backends: {},
     logging: { level: "info", access_log: false, decision_log: false },
-    redaction: { secret_patterns: [] },
-    tools: []
+    redaction: { secret_patterns: [] }
   },
   workloads: [],
   toolSchemas: {},
   loadedAt: "now"
 };
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 const policy: EffectivePolicy = {
   workload_id: "default",
@@ -60,13 +63,11 @@ describe("output limit", () => {
       },
       headers: () => {}
     };
-    const originalFetch = global.fetch;
-    // @ts-ignore
-    global.fetch = async () => ({
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
       text: async () => "too long",
-      headers: new Map(["content-type", "application/json"]),
+      headers: new Headers({ "content-type": "application/json" }),
       status: 200
-    });
+    } as any));
     await proxyOpenAI(request, reply, snapshot, policy, {
       requestId: "1",
       timestamp: "now",
@@ -76,8 +77,6 @@ describe("output limit", () => {
       messages: [],
       metadata: {}
     });
-    // @ts-ignore
-    global.fetch = originalFetch;
     expect(reply.status).toBe(413);
     expect(reply.payload.error).toBe("output_too_large");
   });

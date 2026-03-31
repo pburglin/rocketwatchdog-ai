@@ -1,5 +1,5 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { fetch } from "undici";
+import { fetch as undiciFetch } from "undici";
 import type { ConfigSnapshot, EffectivePolicy } from "../types/config.js";
 import type { CanonicalRequest } from "../types/canonical.js";
 import { runGuards } from "../core/guard/index.js";
@@ -28,6 +28,7 @@ export async function proxyMcp(
   policy: EffectivePolicy,
   canonical: CanonicalRequest
 ) {
+  const fetchImpl = globalThis.fetch ?? undiciFetch;
   const backendName = policy.allowed_mcp_backends[0];
   if (!backendName) {
     reply.code(403).send({ error: "mcp_backend_not_allowed" });
@@ -46,7 +47,10 @@ export async function proxyMcp(
       ? [{ name: body.tool as string, arguments: body.arguments }]
       : undefined;
   const guardResult = runGuards(
-    { text: inputText, toolInvocations },
+    {
+      text: inputText,
+      ...(toolInvocations ? { toolInvocations } : {})
+    },
     policy,
     snapshot.platform,
     snapshot.toolSchemas
@@ -101,7 +105,7 @@ export async function proxyMcp(
     if (token) headers.authorization = `Bearer ${token}`;
   }
 
-  const response = await fetch(backend.base_url, {
+  const response = await fetchImpl(backend.base_url, {
     method: "POST",
     headers,
     body: JSON.stringify(forwardBody),

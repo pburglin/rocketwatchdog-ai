@@ -27,6 +27,7 @@ describe("guard annotations", () => {
     const ctx = buildContext({
       messages: [{ role: "user", content: "api_key: SECRET" }]
     });
+    if (!ctx.policy) throw new Error("policy missing from test context");
     ctx.policy.input_guards.secret_redaction = true;
     const stage = new InputGuardsStage();
     await stage.run(ctx);
@@ -37,6 +38,7 @@ describe("guard annotations", () => {
 
   it("keeps allow_with_annotations for output redaction", async () => {
     const ctx = buildContext({ response: "bearer secret-token" });
+    if (!ctx.policy) throw new Error("policy missing from test context");
     const stage = new OutputGuardsStage();
     await stage.run(ctx);
     expect(ctx.decision?.action).toBe("allow_with_annotations");

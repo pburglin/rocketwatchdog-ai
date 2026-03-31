@@ -1,11 +1,10 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { proxyMcp } from "../src/adapters/mcp.js";
 import type { FastifyReply, FastifyRequest } from "fastify";
 
-// Mock dependencies
-vi.mock("undici", () => ({
-  fetch: vi.fn()
-}));
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe("MCP proxy", () => {
   let mockRequest: Partial<FastifyRequest>;
@@ -106,12 +105,11 @@ describe("MCP proxy", () => {
   });
 
   it("forwards request to MCP backend successfully", async () => {
-    const { fetch } = await import("undici");
-    vi.mocked(fetch).mockResolvedValue({
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
       status: 200,
       headers: new Headers({ "content-type": "application/json" }),
       text: async () => JSON.stringify({ result: "ok" })
-    } as any);
+    } as any));
 
     mockPolicy.allowed_mcp_backends = ["test_mcp"];
 

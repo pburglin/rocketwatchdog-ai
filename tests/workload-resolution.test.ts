@@ -21,8 +21,7 @@ const platform: PlatformConfig = {
   llm_backends: {},
   mcp_backends: {},
   logging: { level: "info", access_log: false, decision_log: false },
-  redaction: { secret_patterns: [] },
-  tools: []
+  redaction: { secret_patterns: [] }
 };
 
 const workloads: WorkloadConfig[] = [
