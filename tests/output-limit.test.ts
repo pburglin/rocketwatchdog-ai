@@ -80,4 +80,36 @@ describe("output limit", () => {
     expect(reply.status).toBe(413);
     expect(reply.payload.error).toBe("output_too_large");
   });
+
+  it("returns a proxy error when the LLM upstream request fails", async () => {
+    const request: any = {
+      body: { messages: [] },
+      log: { info: () => {}, error: () => {} }
+    };
+    const reply: any = {
+      code: (status: number) => {
+        reply.status = status;
+        return reply;
+      },
+      send: (payload: any) => {
+        reply.payload = payload;
+      },
+      headers: () => {}
+    };
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("connect ECONNREFUSED")));
+    await proxyOpenAI(request, reply, snapshot, policy, {
+      requestId: "1",
+      timestamp: "now",
+      route: "/v1",
+      headers: {},
+      payload: {},
+      messages: [],
+      metadata: {}
+    });
+    expect(reply.status).toBe(502);
+    expect(reply.payload).toEqual({
+      error: "llm_upstream_request_failed",
+      backend: "primary"
+    });
+  });
 });

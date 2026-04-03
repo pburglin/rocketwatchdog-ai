@@ -72,6 +72,10 @@ export class ConfigSnapshotManager {
     return this.current;
   }
 
+  getConfigDir() {
+    return this.configDir;
+  }
+
   persistSnapshot(dir: string) {
     const snapshot = this.get();
     fs.mkdirSync(dir, { recursive: true });

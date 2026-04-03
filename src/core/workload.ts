@@ -29,8 +29,19 @@ export function resolveWorkload(
     }
   }
 
+  const fallbackCandidates: WorkloadConfig[] = [];
   for (const workload of workloads) {
     const match = workload.match ?? {};
+    const hasSpecificMatch =
+      (match.routes?.length ?? 0) > 0 ||
+      Object.keys(match.headers ?? {}).length > 0 ||
+      Object.keys(match.metadata ?? {}).length > 0;
+
+    if (!hasSpecificMatch) {
+      fallbackCandidates.push(workload);
+      continue;
+    }
+
     if (match.routes?.length) {
       if (!match.routes.some((route) => ctx.route.startsWith(route))) {
         continue;
@@ -49,6 +60,10 @@ export function resolveWorkload(
       if (!matchesAll) continue;
     }
     return workload;
+  }
+
+  if (fallbackCandidates.length > 0) {
+    return fallbackCandidates[0] ?? null;
   }
 
   if (sourceApp && platform.routing.source_app_workload_map?.[sourceApp]) {

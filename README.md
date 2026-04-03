@@ -57,7 +57,7 @@ configs/
 ```bash
 npm install
 npm run build
-node dist/index.js
+npm start
 ```
 
 Expected: server listening on `http://0.0.0.0:8080` with `/healthz` returning `{"status":"ok"}`.
@@ -76,29 +76,7 @@ Expected:
 {"status":"ok"}
 ```
 
-### 3) LLM proxy with workload selection + guardrails
-
-```bash
-curl -X POST http://localhost:8080/v1/proxy/llm \
-  -H "content-type: application/json" \
-  -H "x-rwd-workload: public-chat" \
-  -d '{"model":"gpt-main","messages":[{"role":"user","content":"hello"}]}'
-```
-
-Expected: a JSON response from the configured LLM backend. If the prompt violates guards, you’ll receive `{"error":"guard_rejected", "reasons":[...]}`.
-
-### 4) MCP proxy (tools)
-
-```bash
-curl -X POST http://localhost:8080/v1/proxy/mcp \
-  -H "content-type: application/json" \
-  -H "x-rwd-workload: sensitive-mcp" \
-  -d '{"tool":"read_customer_record","arguments":{"id":"123"}}'
-```
-
-Expected: MCP backend response or `guard_rejected` if the tool is disallowed or schema validation fails. MCP prompt/message payloads can be redacted before forwarding when input secret redaction is enabled.
-
-### 5) Skills security scan
+### 3) Skills scan demo (works with the default config)
 
 ```bash
 curl -X POST http://localhost:8080/v1/skills/scan \
@@ -111,6 +89,34 @@ Expected:
 ```json
 {"allowed":false,"riskScore":10,"reasons":["DESTRUCTIVE_COMMAND"],"blocked":true,"threshold":20}
 ```
+
+### 4) LLM proxy with workload selection + guardrails
+
+Prerequisite: configure a real LLM backend in `configs/platform.yaml`. The shipped default uses a placeholder URL (`https://api.example-llm.com/v1`), so without updating it the proxy will return `502 llm_upstream_request_failed`.
+
+```bash
+curl -X POST http://localhost:8080/v1/proxy/llm \
+  -H "content-type: application/json" \
+  -H "x-rwd-workload: public-chat" \
+  -d '{"model":"gpt-main","messages":[{"role":"user","content":"hello"}]}'
+```
+
+Expected: a JSON response from the configured LLM backend. If the prompt violates guards, you’ll receive `{"error":"guard_rejected", "reasons":[...]}`.
+
+### 5) MCP proxy (tools)
+
+Prerequisites:
+- run a reachable MCP backend at the configured URL in `configs/platform.yaml` (`internal_tools` defaults to `http://localhost:9001`)
+- include `meta.userId` and `meta.sessionId` because the `sensitive-mcp` workload requires both
+
+```bash
+curl -X POST http://localhost:8080/v1/proxy/mcp \
+  -H "content-type: application/json" \
+  -H "x-rwd-workload: sensitive-mcp" \
+  -d '{"tool":"read_customer_record","arguments":{"id":"123"},"meta":{"userId":"demo-user","sessionId":"demo-session"}}'
+```
+
+Expected: MCP backend response or `guard_rejected` if the tool is disallowed or schema validation fails. MCP prompt/message payloads can be redacted before forwarding when input secret redaction is enabled.
 
 Notes:
 - Set `maxRiskScore` in the request or `platform.skills.max_risk_score` to tune the threshold.

@@ -6,24 +6,28 @@ type ScanResult = {
 };
 
 const riskyPatterns = [
-  { pattern: /rm -rf/gi, reason: "DESTRUCTIVE_COMMAND" },
-  { pattern: /curl\s+[^\s]+\s*\|\s*sh/gi, reason: "PIPE_TO_SHELL" },
-  { pattern: /eval\(/gi, reason: "EVAL_USAGE" },
-  { pattern: /child_process/gi, reason: "NODE_CHILD_PROCESS" },
-  { pattern: /exec\(/gi, reason: "EXEC_USAGE" },
-  { pattern: /fs\.writeFile/gi, reason: "FILE_WRITE" },
-  { pattern: /fetch\(/gi, reason: "NETWORK_ACCESS" }
+  { pattern: /rm -rf/i, reason: "DESTRUCTIVE_COMMAND", score: 10, hardBlock: true },
+  { pattern: /curl\s+[^\s]+\s*\|\s*sh/i, reason: "PIPE_TO_SHELL", score: 10 },
+  { pattern: /eval\(/i, reason: "EVAL_USAGE", score: 10 },
+  { pattern: /child_process/i, reason: "NODE_CHILD_PROCESS", score: 10 },
+  { pattern: /exec\(/i, reason: "EXEC_USAGE", score: 10 },
+  { pattern: /fs\.writeFile/i, reason: "FILE_WRITE", score: 10 },
+  { pattern: /fetch\(/i, reason: "NETWORK_ACCESS", score: 10 }
 ];
 
 export function scanSkill(content: string, threshold = 20): ScanResult {
   let riskScore = 0;
   const reasons: string[] = [];
+  let hardBlocked = false;
   for (const rule of riskyPatterns) {
     if (rule.pattern.test(content)) {
-      riskScore += 10;
+      riskScore += rule.score;
       reasons.push(rule.reason);
+      if (rule.hardBlock) {
+        hardBlocked = true;
+      }
     }
   }
-  const allowed = riskScore < threshold;
+  const allowed = !hardBlocked && riskScore < threshold;
   return { allowed, riskScore, reasons, threshold };
 }

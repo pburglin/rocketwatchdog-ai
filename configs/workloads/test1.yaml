@@ -1,0 +1,34 @@
+id: test1
+match:
+  routes:
+    - /v1/abc
+policy:
+  level: L1
+  data_classification: D0
+  allowed_llm_backends:
+    - openai_primary
+  allowed_models:
+    - gpt-main
+    - gpt-fast
+  allowed_mcp_backends:
+    - internal_tools
+  allowed_tools:
+    - create_ticket
+    - read_customer_record
+  require_user_id: false
+  require_session_id: false
+guards:
+  input:
+    heuristic_prompt_injection: false
+    llm_security_scan: false
+  output:
+    secret_redaction: true
+    pii_redaction: true
+  tools:
+    require_tool_allowlist: false
+    require_tool_schema_validation: false
+    require_intent_check: false
+actions:
+  on_block:
+    http_status: 403
+    message: Request blocked by RocketWatchDog policy.

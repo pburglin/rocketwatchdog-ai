@@ -105,12 +105,27 @@ export async function proxyMcp(
     if (token) headers.authorization = `Bearer ${token}`;
   }
 
-  const response = await fetchImpl(backend.base_url, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(forwardBody),
-    signal: AbortSignal.timeout(backend.timeout_ms)
-  });
+  let response: Response;
+  try {
+    response = await fetchImpl(backend.base_url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(forwardBody),
+      signal: AbortSignal.timeout(backend.timeout_ms)
+    });
+  } catch (error) {
+    request.log.error(
+      {
+        requestId: canonical.requestId,
+        backend: backendName,
+        upstream: backend.base_url,
+        err: error
+      },
+      "mcp_upstream_request_failed"
+    );
+    reply.code(502).send({ error: "mcp_upstream_request_failed", backend: backendName });
+    return;
+  }
 
   const text = await response.text();
   if (policy.max_output_chars > 0 && text.length > policy.max_output_chars) {

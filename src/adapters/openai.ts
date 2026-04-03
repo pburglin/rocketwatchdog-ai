@@ -83,12 +83,27 @@ export async function proxyOpenAI(
   }
 
   const upstream = new URL("/v1/chat/completions", backend.base_url).toString();
-  const response = await fetchImpl(upstream, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(forwardBody),
-    signal: AbortSignal.timeout(backend.timeout_ms)
-  });
+  let response: Response;
+  try {
+    response = await fetchImpl(upstream, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(forwardBody),
+      signal: AbortSignal.timeout(backend.timeout_ms)
+    });
+  } catch (error) {
+    request.log.error(
+      {
+        requestId: canonical.requestId,
+        backend: backendName,
+        upstream,
+        err: error
+      },
+      "llm_upstream_request_failed"
+    );
+    reply.code(502).send({ error: "llm_upstream_request_failed", backend: backendName });
+    return;
+  }
 
   const text = await response.text();
   if (policy.max_output_chars > 0 && text.length > policy.max_output_chars) {

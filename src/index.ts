@@ -3,6 +3,8 @@ import { ConfigSnapshotManager } from "./config/snapshot.js";
 import { buildLogger } from "./logging/logger.js";
 import { registerRequestId } from "./logging/request-id.js";
 import { registerRoutes } from "./http/routes.js";
+import { registerCors } from "./http/cors.js";
+import { registerTrafficLogging } from "./http/traffic.js";
 import { resolveWorkload } from "./core/workload.js";
 import { mergeEffectivePolicy } from "./types/policy.js";
 
@@ -18,6 +20,8 @@ const app = fastify({
 });
 
 registerRequestId(app);
+registerCors(app);
+registerTrafficLogging(app);
 
 function resolvePolicy(
   route: string,

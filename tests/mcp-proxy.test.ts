@@ -22,7 +22,8 @@ describe("MCP proxy", () => {
         params: { messages: [{ role: "user", content: "hello" }] }
       },
       log: {
-        info: vi.fn()
+        info: vi.fn(),
+        error: vi.fn()
       }
     } as any;
 
@@ -123,5 +124,25 @@ describe("MCP proxy", () => {
 
     expect(mockReply.code).toHaveBeenCalledWith(200);
     expect(mockReply.send).toHaveBeenCalled();
+  });
+
+  it("returns a proxy error when the MCP upstream request fails", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("connect ECONNREFUSED")));
+
+    mockPolicy.allowed_mcp_backends = ["test_mcp"];
+
+    await proxyMcp(
+      mockRequest as FastifyRequest,
+      mockReply as FastifyReply,
+      mockSnapshot,
+      mockPolicy,
+      mockCanonical
+    );
+
+    expect(mockReply.code).toHaveBeenCalledWith(502);
+    expect(mockReply.send).toHaveBeenCalledWith({
+      error: "mcp_upstream_request_failed",
+      backend: "test_mcp"
+    });
   });
 });

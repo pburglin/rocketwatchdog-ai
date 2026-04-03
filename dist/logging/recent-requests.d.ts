@@ -1,0 +1,15 @@
+export type RecentRequestEntry = {
+    id: string;
+    timestamp: string;
+    method: string;
+    path: string;
+    workload: string;
+    action: "allow" | "block" | "allow_with_annotations";
+    reasonCodes: string[];
+    duration_ms: number;
+    source_ip?: string;
+    user_agent?: string;
+    status_code: number;
+};
+export declare function recordRecentRequest(entry: Omit<RecentRequestEntry, "id">): void;
+export declare function getRecentRequests(limit?: number): RecentRequestEntry[];

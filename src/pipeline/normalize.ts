@@ -1,6 +1,7 @@
 import type { FastifyRequest } from "fastify";
 import { randomUUID } from "node:crypto";
 import type { CanonicalRequest } from "../types/canonical.js";
+import { getRequestRoute } from "../http/request-route.js";
 
 export function buildCanonicalRequest(
   request: FastifyRequest,
@@ -18,7 +19,7 @@ export function buildCanonicalRequest(
     requestId: request.requestId ?? randomUUID(),
     timestamp: new Date().toISOString(),
     ...(sourceApp ? { sourceApp } : {}),
-    route: request.routerPath ?? request.url,
+    route: getRequestRoute(request),
     headers,
     ...(request.ip ? { clientIp: request.ip } : {}),
     ...(userId ? { userId } : {}),

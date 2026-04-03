@@ -7,6 +7,11 @@ import { ConfigSnapshotManager } from "../config/snapshot.js";
 import { scanSkill } from "../skills/scan.js";
 import { buildPipeline } from "../pipeline/build.js";
 import { authenticateRequest } from "../auth/auth.js";
+import { getRequestRoute } from "./request-route.js";
+import { sanitizeSnapshotForExposure } from "../config/exposure.js";
+import { removeWorkloadConfig, upsertWorkloadConfig } from "../config/workloads.js";
+import type { WorkloadConfig } from "../types/config.js";
+import { registerTrafficRoutes } from "./traffic.js";
 
 function normalizeHeaders(
   headers: Record<string, string | string[] | undefined>
@@ -37,6 +42,57 @@ export function registerRoutes(
     return true;
   };
 
+  registerTrafficRoutes(app, requireAuth);
+
+  const handleProxyRequest = async (
+    request: any,
+    reply: any,
+    forcedTarget?: "llm" | "mcp"
+  ) => {
+    if (!requireAuth(request, reply)) return;
+    const headers = normalizeHeaders(request.headers);
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    const route = getRequestRoute(request);
+    const snapshot = snapshotManager.get();
+    const canonical = buildCanonicalRequest(request, headers, body);
+    const pipeline = buildPipeline();
+    const ctx = await pipeline.run({
+      route,
+      headers,
+      payload: body,
+      snapshot
+    });
+    request.rwdTrafficMeta = {
+      workloadId: ctx.workload?.id,
+      reasonCodes: ctx.decision?.reasonCodes ?? [],
+      decision: ctx.decision?.action
+    };
+    if (ctx.decision?.action === "block") {
+      const override = ctx.workload?.actions?.on_block;
+      reply
+        .code(override?.http_status ?? 403)
+        .send({
+          error: "guard_rejected",
+          reasons: ctx.decision.reasonCodes,
+          message: override?.message
+        });
+      return;
+    }
+
+    if (!ctx.policy) {
+      const policy = resolvePolicy(route, headers, body);
+      ctx.policy = policy;
+    }
+
+    const target = forcedTarget ?? ctx.target ?? "llm";
+    if (target === "mcp") {
+      await proxyMcp(request, reply, snapshot, ctx.policy, canonical);
+      return;
+    }
+
+    await proxyOpenAI(request, reply, snapshot, ctx.policy, canonical);
+  };
+
   app.get("/healthz", async () => ({ status: "ok" }));
   app.get("/readyz", async () => {
     const snapshot = snapshotManager.get();
@@ -63,11 +119,7 @@ export function registerRoutes(
   app.get("/v1/config/effective", async (request, reply) => {
     if (!requireAuth(request, reply)) return;
     const snapshot = snapshotManager.get();
-    if (snapshot.platform.security.redact_secrets_in_logs) {
-      reply.send({ platform: "redacted" });
-      return;
-    }
-    reply.send(snapshot);
+    reply.send(sanitizeSnapshotForExposure(snapshot));
   });
 
   app.post("/v1/config/reload", async (request, reply) => {
@@ -79,6 +131,54 @@ export function registerRoutes(
       return;
     }
     reply.send({ status: "ok", loadedAt: snapshot.loadedAt });
+  });
+
+  app.post("/v1/config/workloads", async (request, reply) => {
+    if (!requireAuth(request, reply)) return;
+    const body = request.body as WorkloadConfig | undefined;
+    if (!body?.id || !body.match || !body.policy?.level) {
+      reply.code(400).send({ error: "invalid_workload_payload" });
+      return;
+    }
+
+    try {
+      const result = upsertWorkloadConfig(snapshotManager, body);
+      reply.send({
+        status: "ok",
+        workloadId: body.id,
+        filePath: result.filePath,
+        loadedAt: result.snapshot.loadedAt
+      });
+    } catch (error) {
+      reply.code(400).send({
+        error: "workload_update_failed",
+        message: error instanceof Error ? error.message : String(error)
+      });
+    }
+  });
+
+  app.delete("/v1/config/workloads/:id", async (request, reply) => {
+    if (!requireAuth(request, reply)) return;
+    const params = request.params as { id?: string };
+    if (!params.id) {
+      reply.code(400).send({ error: "workload_id_required" });
+      return;
+    }
+
+    try {
+      const result = removeWorkloadConfig(snapshotManager, params.id);
+      reply.send({
+        status: "ok",
+        workloadId: params.id,
+        filePath: result.filePath,
+        loadedAt: result.snapshot.loadedAt
+      });
+    } catch (error) {
+      reply.code(400).send({
+        error: "workload_delete_failed",
+        message: error instanceof Error ? error.message : String(error)
+      });
+    }
   });
 
   app.post("/v1/skills/scan", async (request, reply) => {
@@ -99,118 +199,22 @@ export function registerRoutes(
   });
 
   app.post("/v1/proxy/llm", async (request, reply) => {
-    if (!requireAuth(request, reply)) return;
-    const headers = normalizeHeaders(request.headers);
-    const body = request.body as Record<string, unknown>;
-    const policy = resolvePolicy(request.routerPath ?? request.url, headers, body);
-    const snapshot = snapshotManager.get();
-    const canonical = buildCanonicalRequest(request, headers, body);
-    const pipeline = buildPipeline();
-    const ctx = await pipeline.run({
-      route: request.routerPath ?? request.url,
-      headers,
-      payload: body,
-      snapshot,
-      policy
-    });
-    if (ctx.decision?.action === "block") {
-      const override = ctx.workload?.actions?.on_block;
-      reply
-        .code(override?.http_status ?? 403)
-        .send({
-          error: "guard_rejected",
-          reasons: ctx.decision.reasonCodes,
-          message: override?.message
-        });
-      return;
-    }
-    await proxyOpenAI(request, reply, snapshot, policy, canonical);
+    await handleProxyRequest(request, reply, "llm");
   });
 
   app.post("/v1/proxy/mcp", async (request, reply) => {
-    if (!requireAuth(request, reply)) return;
-    const headers = normalizeHeaders(request.headers);
-    const body = request.body as Record<string, unknown>;
-    const policy = resolvePolicy(request.routerPath ?? request.url, headers, body);
-    const snapshot = snapshotManager.get();
-    const canonical = buildCanonicalRequest(request, headers, body);
-    const pipeline = buildPipeline();
-    const ctx = await pipeline.run({
-      route: request.routerPath ?? request.url,
-      headers,
-      payload: body,
-      snapshot,
-      policy
-    });
-    if (ctx.decision?.action === "block") {
-      const override = ctx.workload?.actions?.on_block;
-      reply
-        .code(override?.http_status ?? 403)
-        .send({
-          error: "guard_rejected",
-          reasons: ctx.decision.reasonCodes,
-          message: override?.message
-        });
-      return;
-    }
-    await proxyMcp(request, reply, snapshot, policy, canonical);
+    await handleProxyRequest(request, reply, "mcp");
   });
 
   app.post("/v1/chat/completions", async (request, reply) => {
-    if (!requireAuth(request, reply)) return;
-    const headers = normalizeHeaders(request.headers);
-    const body = request.body as Record<string, unknown>;
-    const policy = resolvePolicy(request.routerPath ?? request.url, headers, body);
-    const snapshot = snapshotManager.get();
-    const canonical = buildCanonicalRequest(request, headers, body);
-    const pipeline = buildPipeline();
-    const ctx = await pipeline.run({
-      route: request.routerPath ?? request.url,
-      headers,
-      payload: body,
-      snapshot,
-      policy
-    });
-    if (ctx.decision?.action === "block") {
-      const override = ctx.workload?.actions?.on_block;
-      reply
-        .code(override?.http_status ?? 403)
-        .send({
-          error: "guard_rejected",
-          reasons: ctx.decision.reasonCodes,
-          message: override?.message
-        });
-      return;
-    }
-    await proxyOpenAI(request, reply, snapshot, policy, canonical);
+    await handleProxyRequest(request, reply, "llm");
   });
 
   app.post("/v1/responses", async (request, reply) => {
-    if (!requireAuth(request, reply)) return;
-    const headers = normalizeHeaders(request.headers);
-    const body = request.body as Record<string, unknown>;
-    const policy = resolvePolicy(request.routerPath ?? request.url, headers, body);
-    const snapshot = snapshotManager.get();
-    const canonical = buildCanonicalRequest(request, headers, body);
-    const pipeline = buildPipeline();
-    const ctx = await pipeline.run({
-      route: request.routerPath ?? request.url,
-      headers,
-      payload: body,
-      snapshot,
-      policy
-    });
-    if (ctx.decision?.action === "block") {
-      const override = ctx.workload?.actions?.on_block;
-      reply
-        .code(override?.http_status ?? 403)
-        .send({
-          error: "guard_rejected",
-          reasons: ctx.decision.reasonCodes,
-          message: override?.message
-        });
-      return;
-    }
-    await proxyOpenAI(request, reply, snapshot, policy, canonical);
+    await handleProxyRequest(request, reply, "llm");
+  });
+
+  app.post("/v1/*", async (request, reply) => {
+    await handleProxyRequest(request, reply);
   });
 }
