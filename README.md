@@ -76,6 +76,38 @@ flowchart LR
   OutGuards --> Debug
 ```
 
+## Workload resolution
+
+```mermaid
+flowchart TD
+  Start([Incoming request]) --> Header{Trusted workload header\npresent and allowed?}
+  Header -->|yes, workload exists| HeaderHit[Resolve by explicit workload header]
+  Header -->|no| Meta{Trusted metadata path\npresent and allowed?}
+  Meta -->|yes, workload exists| MetaHit[Resolve by payload metadata]
+  Meta -->|no| SourceMap{source_app_workload_map\nmatch found?}
+  SourceMap -->|yes, workload exists| SourceHit[Resolve by source app mapping]
+  SourceMap -->|no| MatchRules{Any workload match\nby route, headers, or metadata?}
+  MatchRules -->|yes| MatchHit[Resolve first matching workload]
+  MatchRules -->|no| Fallback{Any workload with no\nspecific match rules?}
+  Fallback -->|yes| FallbackHit[Resolve first fallback candidate]
+  Fallback -->|no| DefaultHit[Resolve configured default_workload\nor "default"]
+
+  HeaderHit --> End([Workload selected])
+  MetaHit --> End
+  SourceHit --> End
+  MatchHit --> End
+  FallbackHit --> End
+  DefaultHit --> End
+```
+
+Resolution notes:
+- **Header override** only applies when client override is enabled or the `sourceApp` is in `trusted_override_source_apps`.
+- **Metadata override** follows the same trust rule as header override.
+- **Source app mapping** is applied before generic route/header/metadata workload matching.
+- **Generic workload matching** checks route prefixes, exact header matches, and exact metadata matches.
+- If no specific workload matches, RocketWatchDog.ai uses the **first workload with no match criteria** as a fallback candidate.
+- If no fallback candidate exists, it uses `routing.default_workload`, or `default` if unspecified.
+
 ## Common protections available
 
 - **Heuristic prompt injection**: low-latency first-pass screening for jailbreaks and role hijacks.
