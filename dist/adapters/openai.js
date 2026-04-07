@@ -4,6 +4,7 @@ import { extractTextFromMessages, extractToolDefinitions, extractToolInvocations
 import { redactMessages } from "../utils/redact-messages.js";
 import { redactSecrets } from "../core/guard/redaction.js";
 import { redactObjectStrings } from "../utils/redact-object.js";
+import { buildSafeReplyHeaders } from "./http.js";
 export async function proxyOpenAI(request, reply, snapshot, policy, canonical) {
     const fetchImpl = globalThis.fetch ?? undiciFetch;
     const backendName = policy.allowed_llm_backends[0];
@@ -46,7 +47,14 @@ export async function proxyOpenAI(request, reply, snapshot, policy, canonical) {
     const shouldRedactInput = policy.input_guards.secret_redaction ?? false;
     if (shouldRedactInput) {
         const { redactedMessages } = redactMessages(messages, snapshot.platform.redaction.secret_patterns);
-        forwardBody = { ...body, messages: redactedMessages };
+        const { redacted: redactedTools } = redactObjectStrings(body?.tools, snapshot.platform.redaction.secret_patterns);
+        const { redacted: redactedToolChoice } = redactObjectStrings(body?.tool_choice, snapshot.platform.redaction.secret_patterns);
+        forwardBody = {
+            ...body,
+            messages: redactedMessages,
+            tools: redactedTools,
+            tool_choice: redactedToolChoice
+        };
     }
     const headers = {
         "content-type": "application/json",
@@ -91,14 +99,14 @@ export async function proxyOpenAI(request, reply, snapshot, policy, canonical) {
             const parsed = JSON.parse(text);
             const redacted = redactObjectStrings(parsed, patterns);
             reply.code(response.status);
-            reply.headers(Object.fromEntries(response.headers.entries()));
+            reply.headers(buildSafeReplyHeaders(response.headers));
             reply.send(JSON.stringify(redacted.redacted));
             return;
         }
         catch {
             const fallback = redactSecrets(text, patterns);
             reply.code(response.status);
-            reply.headers(Object.fromEntries(response.headers.entries()));
+            reply.headers(buildSafeReplyHeaders(response.headers));
             reply.send(fallback.redacted);
             return;
         }
@@ -106,12 +114,12 @@ export async function proxyOpenAI(request, reply, snapshot, policy, canonical) {
     if (patterns.length > 0) {
         const fallback = redactSecrets(text, patterns);
         reply.code(response.status);
-        reply.headers(Object.fromEntries(response.headers.entries()));
+        reply.headers(buildSafeReplyHeaders(response.headers));
         reply.send(fallback.redacted);
         return;
     }
     reply.code(response.status);
-    reply.headers(Object.fromEntries(response.headers.entries()));
+    reply.headers(buildSafeReplyHeaders(response.headers));
     reply.send(text);
 }
 //# sourceMappingURL=openai.js.map

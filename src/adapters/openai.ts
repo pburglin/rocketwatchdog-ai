@@ -7,6 +7,7 @@ import { extractTextFromMessages, extractToolDefinitions, extractToolInvocations
 import { redactMessages } from "../utils/redact-messages.js";
 import { redactSecrets } from "../core/guard/redaction.js";
 import { redactObjectStrings } from "../utils/redact-object.js";
+import { buildSafeReplyHeaders } from "./http.js";
 
 export async function proxyOpenAI(
   request: FastifyRequest,
@@ -70,7 +71,20 @@ export async function proxyOpenAI(
   const shouldRedactInput = policy.input_guards.secret_redaction ?? false;
   if (shouldRedactInput) {
     const { redactedMessages } = redactMessages(messages, snapshot.platform.redaction.secret_patterns);
-    forwardBody = { ...body, messages: redactedMessages };
+    const { redacted: redactedTools } = redactObjectStrings(
+      body?.tools,
+      snapshot.platform.redaction.secret_patterns
+    );
+    const { redacted: redactedToolChoice } = redactObjectStrings(
+      body?.tool_choice,
+      snapshot.platform.redaction.secret_patterns
+    );
+    forwardBody = {
+      ...body,
+      messages: redactedMessages,
+      tools: redactedTools,
+      tool_choice: redactedToolChoice
+    };
   }
 
   const headers: Record<string, string> = {
@@ -120,13 +134,13 @@ export async function proxyOpenAI(
       const parsed = JSON.parse(text);
       const redacted = redactObjectStrings(parsed, patterns);
       reply.code(response.status);
-      reply.headers(Object.fromEntries(response.headers.entries()));
+      reply.headers(buildSafeReplyHeaders(response.headers));
       reply.send(JSON.stringify(redacted.redacted));
       return;
     } catch {
       const fallback = redactSecrets(text, patterns);
       reply.code(response.status);
-      reply.headers(Object.fromEntries(response.headers.entries()));
+      reply.headers(buildSafeReplyHeaders(response.headers));
       reply.send(fallback.redacted);
       return;
     }
@@ -135,12 +149,12 @@ export async function proxyOpenAI(
   if (patterns.length > 0) {
     const fallback = redactSecrets(text, patterns);
     reply.code(response.status);
-    reply.headers(Object.fromEntries(response.headers.entries()));
+    reply.headers(buildSafeReplyHeaders(response.headers));
     reply.send(fallback.redacted);
     return;
   }
 
   reply.code(response.status);
-  reply.headers(Object.fromEntries(response.headers.entries()));
+  reply.headers(buildSafeReplyHeaders(response.headers));
   reply.send(text);
 }

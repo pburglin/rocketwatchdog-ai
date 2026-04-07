@@ -7,6 +7,7 @@ import { extractTextFromMessages } from "../utils/extract.js";
 import { redactSecrets } from "../core/guard/redaction.js";
 import { redactMessages } from "../utils/redact-messages.js";
 import { redactObjectStrings } from "../utils/redact-object.js";
+import { buildSafeReplyHeaders } from "./http.js";
 
 function extractMcpText(payload: unknown): string {
   if (!payload || typeof payload !== "object") return "";
@@ -80,6 +81,15 @@ export async function proxyMcp(
   }
 
   if (shouldRedactInput) {
+    const { redacted: redactedArguments } = redactObjectStrings(
+      body.arguments,
+      snapshot.platform.redaction.secret_patterns
+    );
+    forwardBody = {
+      ...forwardBody,
+      arguments: redactedArguments
+    };
+
     const params = body.params;
     if (params && typeof params === "object") {
       const messages = (params as { messages?: unknown }).messages;
@@ -141,13 +151,13 @@ export async function proxyMcp(
       const parsed = JSON.parse(text);
       const redacted = redactObjectStrings(parsed, patterns);
       reply.code(response.status);
-      reply.headers(Object.fromEntries(response.headers.entries()));
+      reply.headers(buildSafeReplyHeaders(response.headers));
       reply.send(JSON.stringify(redacted.redacted));
       return;
     } catch {
       const fallback = redactSecrets(text, patterns);
       reply.code(response.status);
-      reply.headers(Object.fromEntries(response.headers.entries()));
+      reply.headers(buildSafeReplyHeaders(response.headers));
       reply.send(fallback.redacted);
       return;
     }
@@ -156,12 +166,12 @@ export async function proxyMcp(
   if (patterns.length > 0) {
     const fallback = redactSecrets(text, patterns);
     reply.code(response.status);
-    reply.headers(Object.fromEntries(response.headers.entries()));
+    reply.headers(buildSafeReplyHeaders(response.headers));
     reply.send(fallback.redacted);
     return;
   }
 
   reply.code(response.status);
-  reply.headers(Object.fromEntries(response.headers.entries()));
+  reply.headers(buildSafeReplyHeaders(response.headers));
   reply.send(text);
 }

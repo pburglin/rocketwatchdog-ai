@@ -18,6 +18,10 @@ Configs live under `configs/`:
 
 - Workload IDs must be unique, and the configured default workload must exist.
 - Duplicate `allowed_llm_backends`, `allowed_mcp_backends`, `allowed_models`, and `allowed_tools` entries are rejected at load time.
+- LLM/MCP backend `base_url` values must be valid absolute URLs.
+- Duplicate model names inside a single LLM backend are rejected at load time.
+- `auth.mode: api_key` requires `auth.api_key_env`; MCP `auth.type: bearer_env` requires `auth.token_env`.
+- Config loading aggregates multiple validation failures into one error so broken reloads are easier to diagnose.
 - `allowed_models` is enforced (requests must specify a model in the allowlist).
 - If `require_tool_allowlist` is enabled and `allowed_tools` is empty, any tool usage is rejected with `TOOL_ALLOWLIST_EMPTY`.
 - If `require_tool_schema_validation` is enabled, every allowlisted tool must have a matching JSON schema in `configs/tools` (schemas are validated at load time, and startup/reload fails fast when they are missing).
@@ -116,7 +120,7 @@ curl -X POST http://localhost:8080/v1/proxy/mcp \
   -d '{"tool":"read_customer_record","arguments":{"id":"123"},"meta":{"userId":"demo-user","sessionId":"demo-session"}}'
 ```
 
-Expected: MCP backend response or `guard_rejected` if the tool is disallowed or schema validation fails. MCP prompt/message payloads can be redacted before forwarding when input secret redaction is enabled.
+Expected: MCP backend response or `guard_rejected` if the tool is disallowed or schema validation fails. MCP prompt/message payloads and tool arguments can be redacted before forwarding when input secret redaction is enabled.
 
 Notes:
 - Set `maxRiskScore` in the request or `platform.skills.max_risk_score` to tune the threshold.
@@ -132,7 +136,8 @@ Notes:
 ## Guard pipeline notes
 
 - Request guards run on inbound payloads; output guards run only when a `response` field is present.
-- Input secret redaction is controlled by `guards.input.secret_redaction` (defaults off). Output redaction remains under `guards.output`.
+- Input secret redaction is controlled by `guards.input.secret_redaction` (defaults off). It applies to OpenAI messages/tool metadata and MCP prompts/message payloads/tool arguments before forwarding upstream. Output redaction remains under `guards.output`.
+- Upstream reply forwarding strips hop-by-hop and cookie headers before returning responses to clients.
 - Guard decisions preserve earlier block results unless an output response is explicitly evaluated.
 - If redaction occurs without a block reason, the guard decision is `allow_with_annotations` and includes `{ redacted: true }`.
 

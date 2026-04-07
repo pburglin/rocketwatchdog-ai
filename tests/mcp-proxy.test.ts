@@ -145,4 +145,59 @@ describe("MCP proxy", () => {
       backend: "test_mcp"
     });
   });
+
+  it("redacts MCP tool arguments before forwarding upstream", async () => {
+    mockRequest.body = {
+      tool: "create_ticket",
+      arguments: {
+        note: "token sk-1234567890ABCDE12345"
+      }
+    };
+    mockPolicy.input_guards.secret_redaction = true;
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      status: 200,
+      headers: new Headers({ "content-type": "application/json" }),
+      text: async () => JSON.stringify({ result: "ok" })
+    } as any);
+    vi.stubGlobal("fetch", fetchMock);
+
+    await proxyMcp(
+      mockRequest as FastifyRequest,
+      mockReply as FastifyReply,
+      mockSnapshot,
+      mockPolicy,
+      mockCanonical
+    );
+
+    const forwarded = JSON.parse(fetchMock.mock.calls[0]![1]!.body as string);
+    expect(JSON.stringify(forwarded)).toContain("[REDACTED]");
+    expect(JSON.stringify(forwarded)).not.toContain("sk-1234567890ABCDE12345");
+  });
+
+  it("drops unsafe upstream reply headers before responding", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      status: 200,
+      headers: new Headers({
+        "content-type": "application/json",
+        "transfer-encoding": "chunked",
+        "set-cookie": "session=secret; HttpOnly",
+        "x-upstream": "ok"
+      }),
+      text: async () => JSON.stringify({ result: "ok" })
+    } as any));
+
+    await proxyMcp(
+      mockRequest as FastifyRequest,
+      mockReply as FastifyReply,
+      mockSnapshot,
+      mockPolicy,
+      mockCanonical
+    );
+
+    expect(mockReply.headers).toHaveBeenCalledWith({
+      "content-type": "application/json",
+      "x-upstream": "ok"
+    });
+  });
 });

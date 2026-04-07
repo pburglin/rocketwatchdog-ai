@@ -107,22 +107,52 @@ function findDuplicates(items: string[] | undefined) {
   return [...duplicates];
 }
 
+function validateUrl(value: string, label: string, errors: string[]) {
+  try {
+    // eslint-disable-next-line no-new
+    new URL(value);
+  } catch {
+    errors.push(`Invalid URL for ${label}: ${value}`);
+  }
+}
+
 function validateSnapshot(
   platform: PlatformConfig,
   workloads: WorkloadConfig[],
   toolSchemas: Record<string, Record<string, unknown>>
 ) {
+  const errors: string[] = [];
   const ids = new Set<string>();
   for (const workload of workloads) {
     if (ids.has(workload.id)) {
-      throw new Error(`Duplicate workload id detected: ${workload.id}`);
+      errors.push(`Duplicate workload id detected: ${workload.id}`);
+      continue;
     }
     ids.add(workload.id);
   }
 
   const defaultId = platform.routing.default_workload ?? "default";
   if (!ids.has(defaultId)) {
-    throw new Error(`Default workload not found: ${defaultId}`);
+    errors.push(`Default workload not found: ${defaultId}`);
+  }
+
+  for (const [name, backend] of Object.entries(platform.llm_backends)) {
+    validateUrl(backend.base_url, `llm_backends.${name}.base_url`, errors);
+    const modelDuplicates = findDuplicates(backend.models);
+    if (modelDuplicates.length > 0) {
+      errors.push(`LLM backend ${name} has duplicate models: ${modelDuplicates.join(", ")}`);
+    }
+  }
+
+  for (const [name, backend] of Object.entries(platform.mcp_backends)) {
+    validateUrl(backend.base_url, `mcp_backends.${name}.base_url`, errors);
+    if (backend.auth?.type === "bearer_env" && !backend.auth.token_env) {
+      errors.push(`MCP backend ${name} requires auth.token_env when auth.type=bearer_env`);
+    }
+  }
+
+  if (platform.auth?.mode === "api_key" && !platform.auth.api_key_env) {
+    errors.push("Platform auth.api_key_env is required when auth.mode=api_key");
   }
 
   for (const workload of workloads) {
@@ -133,31 +163,27 @@ function validateSnapshot(
     if (allowedBackends.length > 0) {
       const missing = allowedBackends.filter((name) => !platform.llm_backends[name]);
       if (missing.length > 0) {
-        throw new Error(
-          `Workload ${workload.id} references unknown llm_backends: ${missing.join(", ")}`
-        );
+        errors.push(`Workload ${workload.id} references unknown llm_backends: ${missing.join(", ")}`);
       }
     }
 
     if (allowedMcpBackends.length > 0) {
       const missing = allowedMcpBackends.filter((name) => !platform.mcp_backends[name]);
       if (missing.length > 0) {
-        throw new Error(
-          `Workload ${workload.id} references unknown mcp_backends: ${missing.join(", ")}`
-        );
+        errors.push(`Workload ${workload.id} references unknown mcp_backends: ${missing.join(", ")}`);
       }
     }
 
     const llmDuplicates = findDuplicates(policy.allowed_llm_backends);
     if (llmDuplicates.length > 0) {
-      throw new Error(
+      errors.push(
         `Workload ${workload.id} has duplicate allowed_llm_backends: ${llmDuplicates.join(", ")}`
       );
     }
 
     const mcpDuplicates = findDuplicates(policy.allowed_mcp_backends);
     if (mcpDuplicates.length > 0) {
-      throw new Error(
+      errors.push(
         `Workload ${workload.id} has duplicate allowed_mcp_backends: ${mcpDuplicates.join(", ")}`
       );
     }
@@ -165,9 +191,7 @@ function validateSnapshot(
     if (policy.allowed_models?.length) {
       const modelDuplicates = findDuplicates(policy.allowed_models);
       if (modelDuplicates.length > 0) {
-        throw new Error(
-          `Workload ${workload.id} has duplicate allowed_models: ${modelDuplicates.join(", ")}`
-        );
+        errors.push(`Workload ${workload.id} has duplicate allowed_models: ${modelDuplicates.join(", ")}`);
       }
       const backendsToCheck = allowedBackends.length > 0 ? allowedBackends : Object.keys(platform.llm_backends);
       const availableModels = new Set<string>();
@@ -177,36 +201,34 @@ function validateSnapshot(
       }
       const missingModels = policy.allowed_models.filter((model) => !availableModels.has(model));
       if (missingModels.length > 0) {
-        throw new Error(
-          `Workload ${workload.id} references unknown allowed_models: ${missingModels.join(", ")}`
-        );
+        errors.push(`Workload ${workload.id} references unknown allowed_models: ${missingModels.join(", ")}`);
       }
     }
 
     if (policy.allowed_tools?.length) {
       const duplicates = findDuplicates(policy.allowed_tools);
       if (duplicates.length > 0) {
-        throw new Error(
-          `Workload ${workload.id} has duplicate allowed_tools: ${duplicates.join(", ")}`
-        );
+        errors.push(`Workload ${workload.id} has duplicate allowed_tools: ${duplicates.join(", ")}`);
       }
     }
 
     if (guards?.tools?.require_tool_schema_validation) {
       if (Object.keys(toolSchemas).length === 0) {
-        throw new Error(
-          `Workload ${workload.id} requires tool schemas but configs/tools is empty`
-        );
+        errors.push(`Workload ${workload.id} requires tool schemas but configs/tools is empty`);
       }
       if (policy.allowed_tools?.length) {
         const missingSchemas = policy.allowed_tools.filter((tool) => !toolSchemas[tool]);
         if (missingSchemas.length > 0) {
-          throw new Error(
+          errors.push(
             `Workload ${workload.id} requires tool schemas but missing: ${missingSchemas.join(", ")}`
           );
         }
       }
     }
+  }
+
+  if (errors.length > 0) {
+    throw new Error(`Config validation failed: ${errors.join("; ")}`);
   }
 }
 
