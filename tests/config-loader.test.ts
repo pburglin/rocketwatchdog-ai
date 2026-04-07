@@ -206,4 +206,44 @@ policy:
 
     expect(() => loadConfigDir(dir)).toThrow(/token_env.*api_key_env|api_key_env.*token_env/i);
   });
+
+  it("rejects undersized debug capture payload limits", () => {
+    const dir = makeConfigDir({
+      "platform.yaml": `
+server:
+  host: 0.0.0.0
+  port: 8080
+  request_timeout_ms: 30000
+  max_body_size_kb: 1024
+routing:
+  workload_header: x-rwd-workload
+  allow_client_workload_override: false
+  default_workload: default
+security:
+  default_level: L1
+  fail_closed_on_invalid_config: true
+  normalize_unicode: true
+  redact_secrets_in_logs: false
+  default_action_on_guard_error: block
+logging:
+  level: info
+  access_log: false
+  decision_log: false
+  debug_capture:
+    max_payload_chars: 12
+redaction:
+  secret_patterns: []
+llm_backends: {}
+mcp_backends: {}
+`,
+      "workloads/default.yaml": `
+id: default
+match: {}
+policy:
+  level: L1
+`
+    });
+
+    expect(() => loadConfigDir(dir)).toThrow(/max_payload_chars/i);
+  });
 });

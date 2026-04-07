@@ -18,7 +18,30 @@ export type DebugLogEntry = {
 
 const entries: DebugLogEntry[] = [];
 let nextId = 1;
-const MAX_DEBUG_ENTRIES = 300;
+
+function getMaxEntries(platform: PlatformConfig) {
+  return platform.logging.debug_capture?.max_entries ?? 300;
+}
+
+function truncateLongStrings(value: unknown, maxChars: number): unknown {
+  if (maxChars <= 0) return value;
+  if (typeof value === "string") {
+    if (value.length <= maxChars) return value;
+    return `${value.slice(0, maxChars)}…[truncated ${value.length - maxChars} chars]`;
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => truncateLongStrings(item, maxChars));
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, entry]) => [
+        key,
+        truncateLongStrings(entry, maxChars)
+      ])
+    );
+  }
+  return value;
+}
 
 function maybeRedact<T>(platform: PlatformConfig, value: T): T {
   if (!platform.security.redact_secrets_in_logs) return value;
@@ -32,15 +55,20 @@ export function recordDebugLog(
   platform: PlatformConfig,
   entry: Omit<DebugLogEntry, "id" | "timestamp"> & { timestamp?: string }
 ) {
+  const maxPayloadChars = platform.logging.debug_capture?.max_payload_chars ?? 4000;
   entries.push({
     ...entry,
     id: String(nextId++),
     timestamp: entry.timestamp ?? new Date().toISOString(),
     headers: entry.headers ? maybeRedact(platform, entry.headers) : undefined,
-    payload: typeof entry.payload === "undefined" ? undefined : maybeRedact(platform, entry.payload)
+    payload:
+      typeof entry.payload === "undefined"
+        ? undefined
+        : truncateLongStrings(maybeRedact(platform, entry.payload), maxPayloadChars)
   });
-  if (entries.length > MAX_DEBUG_ENTRIES) {
-    entries.splice(0, entries.length - MAX_DEBUG_ENTRIES);
+  const maxEntries = getMaxEntries(platform);
+  if (entries.length > maxEntries) {
+    entries.splice(0, entries.length - maxEntries);
   }
 }
 

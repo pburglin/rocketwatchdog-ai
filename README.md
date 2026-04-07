@@ -25,6 +25,7 @@ Configs live under `configs/`:
 - LLM/MCP backend `base_url` values must be valid absolute URLs.
 - Duplicate model names inside a single LLM backend are rejected at load time.
 - `auth.mode: api_key` requires `auth.api_key_env`; MCP `auth.type: bearer_env` requires `auth.token_env`.
+- `logging.debug_capture.max_entries` and `logging.debug_capture.max_payload_chars` let you cap in-memory debug retention and truncate oversized captured payloads.
 - Config loading aggregates multiple validation failures into one error so broken reloads are easier to diagnose.
 - `allowed_models` is enforced (requests must specify a model in the allowlist).
 - If `require_tool_allowlist` is enabled and `allowed_tools` is empty, any tool usage is rejected with `TOOL_ALLOWLIST_EMPTY`.
@@ -51,15 +52,72 @@ Configs live under `configs/`:
 - `POST /v1/responses`
 - `POST /v1/skills/scan`
 
+## Architecture
+
+```mermaid
+flowchart LR
+  Client[Client app or API gateway]
+  RWD["RocketWatchDog.ai\npolicy + proxy layer"]
+  Resolver["Workload resolver\nheader, metadata, route, source-app map"]
+  Merge["Effective policy merge\nplatform + workload"]
+  InGuards["Input guards\nheuristic prompt injection\nLLM security scan\nsecret redaction"]
+  ToolGuards["Tool guards\nallowlist\nschema validation\nintent check"]
+  Forward["Provider adapters\nOpenAI-compatible LLM or MCP backend"]
+  OutGuards["Output guards\nsecret redaction\nPII redaction\noutput policy scan\noutput size limit"]
+  Debug["Audit + debug capture\nsearchable traffic logs\nbounded retention + payload truncation"]
+  Decision["Decision payload\nallowed, action, reasons, workload, target"]
+
+  Client --> RWD
+  RWD --> Resolver --> Merge --> InGuards --> ToolGuards
+  ToolGuards -->|proxy mode| Forward --> OutGuards --> Client
+  ToolGuards -->|decision mode| Decision --> Client
+  InGuards --> Debug
+  ToolGuards --> Debug
+  OutGuards --> Debug
+```
+
+## Common protections available
+
+- **Heuristic prompt injection**: low-latency first-pass screening for jailbreaks and role hijacks.
+- **LLM security scan**: deeper, higher-latency review for sensitive or privileged flows.
+- **Secret redaction**: masks obvious credentials and tokens in prompts, tool payloads, logs, and responses.
+- **PII redaction**: suppresses identity-linked outbound content for privacy-sensitive workloads.
+- **Tool allowlist**: rejects tool calls unless the tool is explicitly permitted by workload policy.
+- **Tool schema validation**: validates tool arguments against registered JSON schemas before execution.
+- **Intent check**: extra scrutiny for higher-risk tool activity when enabled.
+- **Output policy scan**: flags suspicious or policy-violating model output.
+- **Output size limit**: blocks or constrains oversized responses.
+- **JWT issuer/audience checks**: validates JWT claims when JWT auth is configured.
+- **Debug capture bounds**: truncates oversized captured payloads and limits in-memory retention.
+
 ## Integration patterns
 
 ### 1) Proxy mode
 
 Use when RocketWatchDog.ai should sit inline between your API gateway and the provider.
 
+```mermaid
+sequenceDiagram
+  participant G as API gateway
+  participant R as RocketWatchDog.ai
+  participant P as LLM or MCP backend
+
+  G->>R: Request
+  R->>R: Resolve workload
+  R->>R: Apply input and tool guards
+  alt allowed
+    R->>P: Forward upstream request
+    P-->>R: Provider response
+    R->>R: Apply output guards and redaction
+    R-->>G: Sanitized response
+  else blocked
+    R-->>G: guard_rejected / policy block
+  end
+```
+
 Flow:
 1. API gateway sends request to RocketWatchDog.ai.
-2. RocketWatchDog.ai evaluates policy and guards.
+2. RocketWatchDog.ai resolves workload and evaluates policy and guards.
 3. If allowed, RocketWatchDog.ai forwards to the configured LLM or MCP backend.
 4. RocketWatchDog.ai optionally redacts the upstream reply and returns it to the gateway.
 
@@ -80,9 +138,27 @@ Cons:
 
 Use when your API gateway should keep provider ownership and ask RocketWatchDog.ai only for an allow or block decision.
 
+```mermaid
+sequenceDiagram
+  participant G as API gateway
+  participant R as RocketWatchDog.ai
+  participant P as LLM or MCP backend
+
+  G->>R: Request context only
+  R->>R: Resolve workload
+  R->>R: Evaluate policy and guards
+  alt allowed
+    R-->>G: Decision payload (allow + target)
+    G->>P: Provider call stays in gateway
+    P-->>G: Provider response
+  else blocked
+    R-->>G: Decision payload (block + reasons)
+  end
+```
+
 Flow:
 1. API gateway sends request context to RocketWatchDog.ai.
-2. RocketWatchDog.ai evaluates policy and guards.
+2. RocketWatchDog.ai resolves workload and evaluates policy and guards.
 3. RocketWatchDog.ai returns a decision payload with `allowed`, `action`, `reasons`, `workload`, and `target`.
 4. API gateway calls the LLM itself only when the decision allows it.
 
@@ -122,6 +198,7 @@ Cons:
 - **Traffic** page supports free-text filtering across request IDs, headers, payloads, source IPs, backend names, and integration mode.
 - **Performance** page highlights slowest requests and backend latency summaries.
 - **Settings** page lets admin users toggle debug mode and review integration-mode posture.
+- Debug capture keeps only the most recent configured entries and truncates large payload strings before storing them in memory.
 
 ### CLI
 - `rocketwatchdog perf-summary` fetches recent traffic and prints average latency, p95 latency, and the slowest recent requests.
@@ -221,6 +298,15 @@ curl -X POST http://localhost:8080/v1/debug/status \
   -H "content-type: application/json" \
   -d '{"enabled":true}'
 curl 'http://localhost:8080/v1/debug/logs?limit=20&q=req-123'
+```
+
+Debug capture retention defaults to 300 entries and 4000 characters per captured string field. Tune it in `configs/platform.yaml`:
+
+```yaml
+logging:
+  debug_capture:
+    max_entries: 300
+    max_payload_chars: 4000
 ```
 
 ## Validation commands

@@ -155,6 +155,11 @@ function validateSnapshot(
     errors.push("Platform auth.api_key_env is required when auth.mode=api_key");
   }
 
+  const debugCapture = platform.logging.debug_capture;
+  if (debugCapture?.max_payload_chars && debugCapture.max_payload_chars < 32) {
+    errors.push("logging.debug_capture.max_payload_chars must be at least 32 characters");
+  }
+
   for (const workload of workloads) {
     const { policy, guards } = workload;
     const allowedBackends = policy.allowed_llm_backends ?? [];

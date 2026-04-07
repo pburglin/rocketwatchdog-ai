@@ -6,7 +6,9 @@ function parseJwtPayload(token) {
     if (!payloadPart)
         return null;
     try {
-        const payload = Buffer.from(payloadPart, "base64").toString("utf-8");
+        const normalized = payloadPart.replace(/-/g, "+").replace(/_/g, "/");
+        const padding = normalized.length % 4 === 0 ? "" : "=".repeat(4 - (normalized.length % 4));
+        const payload = Buffer.from(`${normalized}${padding}`, "base64").toString("utf-8");
         return JSON.parse(payload);
     }
     catch {

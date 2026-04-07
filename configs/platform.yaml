@@ -45,6 +45,9 @@ logging:
   decision_log: true
   log_dir: "./logs"
   integration_mode: proxy
+  debug_capture:
+    max_entries: 300
+    max_payload_chars: 4000
 redaction:
   secret_patterns:
     - "(?i)api[_-]?key"

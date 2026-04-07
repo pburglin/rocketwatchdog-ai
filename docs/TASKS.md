@@ -2,6 +2,7 @@
 
 ## Done
 - Harden config validation for backend URLs, duplicate models, and auth env requirements.
+- Add debug capture retention and payload truncation controls in config.
 - Redact OpenAI tool metadata and MCP tool arguments when input secret redaction is enabled.
 - Strip unsafe upstream response headers before forwarding replies.
 - Expose control-plane admin UI pages for dashboard, policies, integrations, traffic, and settings.

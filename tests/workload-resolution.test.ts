@@ -9,6 +9,7 @@ const platform: PlatformConfig = {
     allow_client_workload_override: false,
     trusted_override_source_apps: ["trusted"],
     source_app_header: "x-rwd-source-app",
+    source_app_workload_map: { partner: "trusted-only" },
     default_workload: "default"
   },
   security: {
@@ -46,6 +47,16 @@ describe("resolveWorkload", () => {
       headers: { "x-rwd-workload": "trusted-only", "x-rwd-source-app": "trusted" },
       payload: {},
       sourceApp: "trusted"
+    });
+    expect(result?.id).toBe("trusted-only");
+  });
+
+  it("applies source-app workload mappings before falling back to default", () => {
+    const result = resolveWorkload(platform, workloads, {
+      route: "/v1",
+      headers: { "x-rwd-source-app": "partner" },
+      payload: {},
+      sourceApp: "partner"
     });
     expect(result?.id).toBe("trusted-only");
   });

@@ -89,7 +89,15 @@
         "level": { "type": "string" },
         "access_log": { "type": "boolean" },
         "decision_log": { "type": "boolean" },
-        "log_dir": { "type": "string" }
+        "log_dir": { "type": "string" },
+        "integration_mode": { "type": "string", "enum": ["proxy", "decision"] },
+        "debug_capture": {
+          "type": "object",
+          "properties": {
+            "max_entries": { "type": "integer", "minimum": 1 },
+            "max_payload_chars": { "type": "integer", "minimum": 32 }
+          }
+        }
       }
     },
     "redaction": {

@@ -21,6 +21,12 @@ export function resolveWorkload(platform, workloads, ctx) {
                 return byMeta;
         }
     }
+    if (sourceApp && platform.routing.source_app_workload_map?.[sourceApp]) {
+        const mapped = platform.routing.source_app_workload_map[sourceApp];
+        const bySource = workloads.find((workload) => workload.id === mapped);
+        if (bySource)
+            return bySource;
+    }
     const fallbackCandidates = [];
     for (const workload of workloads) {
         const match = workload.match ?? {};
@@ -50,12 +56,6 @@ export function resolveWorkload(platform, workloads, ctx) {
     }
     if (fallbackCandidates.length > 0) {
         return fallbackCandidates[0] ?? null;
-    }
-    if (sourceApp && platform.routing.source_app_workload_map?.[sourceApp]) {
-        const mapped = platform.routing.source_app_workload_map[sourceApp];
-        const bySource = workloads.find((workload) => workload.id === mapped);
-        if (bySource)
-            return bySource;
     }
     const defaultId = platform.routing.default_workload ?? "default";
     return workloads.find((workload) => workload.id === defaultId) ?? null;

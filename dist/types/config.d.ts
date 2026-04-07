@@ -50,6 +50,10 @@ export type PlatformConfig = {
         decision_log: boolean;
         log_dir?: string;
         integration_mode?: "proxy" | "decision";
+        debug_capture?: {
+            max_entries?: number;
+            max_payload_chars?: number;
+        };
     };
     redaction: {
         secret_patterns: string[];
