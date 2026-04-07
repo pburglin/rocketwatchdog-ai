@@ -99,6 +99,23 @@ Cons:
 - Gateway must implement the provider call path itself.
 - End-to-end response redaction cannot happen inside RocketWatchDog.ai because the provider response never flows through it.
 
+## UI screenshots
+
+### Dashboard
+![RocketWatchDog.ai Dashboard](docs/screenshots/dashboard.png)
+
+### Traffic and debug logs
+![RocketWatchDog.ai Traffic](docs/screenshots/traffic.png)
+
+### Performance troubleshooting
+![RocketWatchDog.ai Performance](docs/screenshots/performance.png)
+
+### Integrations
+![RocketWatchDog.ai Integrations](docs/screenshots/integrations.png)
+
+### Settings
+![RocketWatchDog.ai Settings](docs/screenshots/settings.png)
+
 ## Admin troubleshooting features
 
 ### UI
