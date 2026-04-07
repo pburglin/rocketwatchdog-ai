@@ -45,6 +45,8 @@ export function registerTrafficLogging(app) {
                 : {}),
             status_code: reply.statusCode,
             ...(request.requestId ? { request_id: request.requestId } : {}),
+            ...(request.rwdTrafficMeta?.backend ? { backend: request.rwdTrafficMeta.backend } : {}),
+            ...(request.rwdTrafficMeta?.integrationMode ? { integration_mode: request.rwdTrafficMeta.integrationMode } : {}),
             ...(isDebugModeEnabled()
                 ? {
                     request_headers: requestHeaders,
@@ -55,6 +57,8 @@ export function registerTrafficLogging(app) {
                         requestId: request.requestId,
                         sourceIp: request.ip,
                         path: request.url,
+                        backend: request.rwdTrafficMeta?.backend,
+                        integrationMode: request.rwdTrafficMeta?.integrationMode,
                         requestHeaders,
                         responseHeaders,
                         requestPayload: request.rwdCanonicalRequest?.payload ?? request.body,

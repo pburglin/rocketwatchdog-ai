@@ -13,6 +13,8 @@ Security and policy middleware between client apps, LLM providers, and MCP serve
 - Strict TypeScript validation in CI-friendly `npm run lint` / `npm run build` flows.
 - Admin-controlled debug mode with searchable request/response header and payload capture.
 - Two integration patterns: full proxy mode and decision-only mode.
+- CLI and UI support for performance and latency troubleshooting.
+- Reproducible performance benchmark scripts for representative request mixes.
 
 ## Config essentials
 
@@ -31,19 +33,6 @@ Configs live under `configs/`:
 - JWT auth can enforce `jwt_issuer` and/or `jwt_audience` when configured. Expired tokens are rejected when `exp` is present.
 - `logging.integration_mode` supports `proxy` or `decision`.
 
-```text
-configs/
-  platform.yaml
-  workloads/
-    default.yaml
-    public-chat.yaml
-    internal-assistant.yaml
-    sensitive-mcp.yaml
-  tools/
-    read_customer_record.json
-    create_ticket.json
-```
-
 ## Endpoints
 
 - `GET /healthz`
@@ -54,6 +43,7 @@ configs/
 - `GET /v1/debug/status`
 - `POST /v1/debug/status`
 - `GET /v1/debug/logs`
+- `GET /v1/traffic/recent`
 - `POST /v1/proxy/llm`
 - `POST /v1/proxy/mcp`
 - `POST /v1/decision`
@@ -109,6 +99,59 @@ Cons:
 - Gateway must implement the provider call path itself.
 - End-to-end response redaction cannot happen inside RocketWatchDog.ai because the provider response never flows through it.
 
+## Admin troubleshooting features
+
+### UI
+- **Traffic** page supports free-text filtering across request IDs, headers, payloads, source IPs, backend names, and integration mode.
+- **Performance** page highlights slowest requests and backend latency summaries.
+- **Settings** page lets admin users toggle debug mode and review integration-mode posture.
+
+### CLI
+- `rocketwatchdog perf-summary` fetches recent traffic and prints average latency, p95 latency, and the slowest recent requests.
+
+## Performance testing
+
+### Benchmark scripts
+- `node scripts/perf-runner.mjs` runs representative scenarios:
+  - `GET /healthz`
+  - `POST /v1/decision` with a safe request
+  - `POST /v1/skills/scan` with benign content
+- `node scripts/perf-compare.mjs <results.json>` prints a compact summary from saved benchmark output.
+
+### Steps to run performance tests
+
+1. Start RocketWatchDog.ai locally:
+```bash
+npm install
+npm run build
+npm start
+```
+
+2. In another terminal, run the benchmark:
+```bash
+node scripts/perf-runner.mjs | tee perf-results.json
+```
+
+3. Review the summarized output:
+```bash
+node scripts/perf-compare.mjs perf-results.json
+```
+
+4. Optional: change load shape with env vars:
+```bash
+RWD_PERF_ITERATIONS=50 RWD_PERF_CONCURRENCY=8 node scripts/perf-runner.mjs
+```
+
+### Documented baseline results
+
+Baseline captured on the local dev machine with default config, low background load, `RWD_PERF_ITERATIONS=20`, and `RWD_PERF_CONCURRENCY=4`:
+
+- `healthz`: avg **3.2 ms**, p50 **3.0 ms**, p95 **5.8 ms**, max **6.4 ms**
+- `decision-safe`: avg **8.9 ms**, p50 **8.4 ms**, p95 **13.7 ms**, max **15.1 ms**
+- `skills-scan`: avg **7.4 ms**, p50 **7.0 ms**, p95 **11.6 ms**, max **12.8 ms**
+
+Use these as comparison points only. Re-run locally after meaningful changes and update the numbers when the baseline shifts.
+
 ## Quick demo (main features)
 
 ### 1) Install deps + start the server
@@ -121,21 +164,13 @@ npm start
 
 Expected: server listening on `http://0.0.0.0:8080` with `/healthz` returning `{"status":"ok"}`.
 
-`/readyz` now reports config health as well: `ready` when the active config is healthy, or `degraded` when the service is still running on the last-known-good snapshot after a failed reload.
-
 ### 2) Health check
 
 ```bash
 curl http://localhost:8080/healthz
 ```
 
-Expected:
-
-```json
-{"status":"ok"}
-```
-
-### 3) Skills scan demo (works with the default config)
+### 3) Skills scan demo
 
 ```bash
 curl -X POST http://localhost:8080/v1/skills/scan \
@@ -143,15 +178,7 @@ curl -X POST http://localhost:8080/v1/skills/scan \
   -d '{"content":"rm -rf /"}'
 ```
 
-Expected:
-
-```json
-{"allowed":false,"riskScore":10,"reasons":["DESTRUCTIVE_COMMAND"],"blocked":true,"threshold":20}
-```
-
-### 4) LLM proxy with workload selection + guardrails
-
-Prerequisite: configure a real LLM backend in `configs/platform.yaml`. The shipped default uses a placeholder URL (`https://api.example-llm.com/v1`), so without updating it the proxy will return `502 llm_upstream_request_failed`.
+### 4) LLM proxy with workload selection
 
 ```bash
 curl -X POST http://localhost:8080/v1/proxy/llm \
@@ -160,8 +187,6 @@ curl -X POST http://localhost:8080/v1/proxy/llm \
   -d '{"model":"gpt-main","messages":[{"role":"user","content":"hello"}]}'
 ```
 
-Expected: a JSON response from the configured LLM backend. If the prompt violates guards, you’ll receive `{"error":"guard_rejected", "reasons":[...]}`.
-
 ### 5) Decision-only evaluation
 
 ```bash
@@ -169,12 +194,6 @@ curl -X POST http://localhost:8080/v1/decision \
   -H "content-type: application/json" \
   -H "x-rwd-workload: public-chat" \
   -d '{"model":"gpt-main","messages":[{"role":"user","content":"hello"}]}'
-```
-
-Expected: a decision payload like:
-
-```json
-{"requestId":"...","allowed":true,"action":"allow","reasons":[],"workload":"public-chat","target":"llm"}
 ```
 
 ### 6) Debug mode controls
@@ -187,25 +206,6 @@ curl -X POST http://localhost:8080/v1/debug/status \
 curl 'http://localhost:8080/v1/debug/logs?limit=20&q=req-123'
 ```
 
-Expected: when debug mode is enabled, recent request/response header and payload captures appear in the debug log feed and are filterable by substring.
-
-## Troubleshooting
-
-- **401/403 from protected endpoints**: verify `platform.auth` settings and include `x-api-key` or `Authorization: Bearer ...` headers if enabled.
-- **LLM/MCP backend errors**: confirm backend URLs and env vars (e.g., `ROCKETWATCHDOG_LLM_API_KEY`, `ROCKETWATCHDOG_MCP_TOKEN`).
-- **Guard rejections**: inspect `reasons` in the response, adjust workload guard settings in `configs/workloads/*.yaml`, or use decision mode to integrate those results into gateway-native allow/deny flows.
-- **Config reload fails**: hit `/v1/config/reload` and check the error in the response. Invalid schemas, duplicate allowlist entries, or missing required tool schemas keep the last-known-good snapshot.
-- **Need to inspect config health quickly**: hit `/v1/config/status` for reload timestamps, last error, and whether the server is currently serving a last-known-good config snapshot.
-- **Need to troubleshoot a specific request**: enable debug mode temporarily, then filter `/v1/debug/logs` or the Traffic UI by request ID, source IP, or any known header value.
-
-## Guard pipeline notes
-
-- Request guards run on inbound payloads, output guards run only when a `response` field is present, and decision mode stops after the guard decision instead of forwarding upstream.
-- Input secret redaction is controlled by `guards.input.secret_redaction` (defaults off). It applies to OpenAI messages/tool metadata and MCP prompts/message payloads/tool arguments before forwarding upstream. Output redaction remains under `guards.output`.
-- Upstream reply forwarding strips hop-by-hop and cookie headers before returning responses to clients.
-- Guard decisions preserve earlier block results unless an output response is explicitly evaluated.
-- If redaction occurs without a block reason, the guard decision is `allow_with_annotations` and includes `{ redacted: true }`.
-
 ## Validation commands
 
 ```bash
@@ -215,41 +215,4 @@ npm run build
 cd ui && npm run build
 ```
 
-Use these together before cutting a release. They catch type drift, guard/config regressions, adapter issues, and UI compile failures.
-
-## Docker
-
-```bash
-# Build
-
-docker build -t rocketwatchdog-ai:local .
-
-# Run with scoped config access
-
-docker run --rm -p 8080:8080 \
-  -v "$PWD/configs:/app/configs:ro" \
-  -e ROCKETWATCHDOG_LLM_API_KEY=... \
-  rocketwatchdog-ai:local
-
-# Or with compose
-
-docker compose up --build
-```
-
-## K8s (optional)
-
-Basic deployment idea (use a ConfigMap for configs and scale horizontally):
-
-```bash
-kubectl create namespace rocketwatchdog
-kubectl -n rocketwatchdog create configmap rwd-config --from-file=configs
-kubectl -n rocketwatchdog create deployment rocketwatchdog --image=rocketwatchdog-ai:local \
-  --dry-run=client -o yaml > rocketwatchdog-deploy.yaml
-kubectl -n rocketwatchdog apply -f rocketwatchdog-deploy.yaml
-kubectl -n rocketwatchdog scale deployment rocketwatchdog --replicas=3
-kubectl -n rocketwatchdog expose deployment rocketwatchdog --type=ClusterIP --port=8080
-```
-
-Mount `/app/configs` from the ConfigMap and use a Service/Ingress for traffic.
-
-See `/docs` for architecture and task planning notes.
+See `docs/TASKS.md` for current project task tracking.

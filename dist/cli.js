@@ -89,6 +89,26 @@ program
     const text = await response.text();
     console.log(text);
 });
+program
+    .command("perf-summary")
+    .description("Fetch recent traffic and print latency summaries")
+    .option("-c, --config-dir <path>", "Config directory", "configs")
+    .action(async (options) => {
+    const snapshot = loadConfigDir(options.configDir);
+    const base = `http://${snapshot.platform.server.host}:${snapshot.platform.server.port}`;
+    const response = await fetch(`${base}/v1/traffic/recent?limit=200`);
+    const data = await response.json();
+    const items = data.items ?? [];
+    const sorted = [...items].sort((a, b) => (b.duration_ms ?? 0) - (a.duration_ms ?? 0));
+    const avg = items.length ? items.reduce((sum, item) => sum + (item.duration_ms ?? 0), 0) / items.length : 0;
+    const p95 = sorted.length ? (sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))]?.duration_ms ?? 0) : 0;
+    console.log(JSON.stringify({
+        count: items.length,
+        avg_ms: Number(avg.toFixed(2)),
+        p95_ms: p95,
+        slowest: sorted.slice(0, 5)
+    }, null, 2));
+});
 program.parse(process.argv);
 function normalizeHeaders(headers) {
     const normalized = {};

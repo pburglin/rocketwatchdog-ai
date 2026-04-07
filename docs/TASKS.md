@@ -5,13 +5,16 @@
 - Redact OpenAI tool metadata and MCP tool arguments when input secret redaction is enabled.
 - Strip unsafe upstream response headers before forwarding replies.
 - Expose control-plane admin UI pages for dashboard, policies, integrations, traffic, and settings.
-
-## In Progress
 - Add admin-controlled debug mode with request/response header and payload capture for troubleshooting.
 - Add traffic/log filtering in the UI so admins can search log messages by arbitrary substrings such as correlation IDs, source IPs, or header values.
 - Support and document two integration patterns:
   - Proxy mode: RocketWatchDog.ai forwards to the LLM/MCP backend.
   - Decision mode: RocketWatchDog.ai returns an allow/block decision only, and the upstream API gateway performs the provider call.
+
+## In Progress
+- Add CLI and UI admin troubleshooting features for performance and latency analysis.
+- Add reproducible performance test scripts for representative request mixes.
+- Publish documented benchmark steps and baseline results in the README.
 
 ## Pending
 - Persist operator-controlled runtime settings like debug mode across restarts/config reloads.

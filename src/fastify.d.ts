@@ -11,6 +11,8 @@ declare module "fastify" {
       workloadId?: string;
       reasonCodes?: string[];
       decision?: string;
+      backend?: string;
+      integrationMode?: string;
     };
     rwdCanonicalRequest?: import("./types/canonical.js").CanonicalRequest;
   }

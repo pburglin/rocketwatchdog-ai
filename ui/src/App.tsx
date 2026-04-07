@@ -10,6 +10,7 @@ import { PoliciesPage } from './pages/PoliciesPage';
 import { ReferencesPage } from './pages/ReferencesPage';
 import { IntegrationsPage } from './pages/IntegrationsPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { PerformancePage } from './pages/PerformancePage';
 
 function AppShell() {
   const auth = useAuth();
@@ -24,6 +25,7 @@ function AppShell() {
       <Routes>
         <Route path="/" element={<DashboardPage auth={auth} controlPlane={controlPlane} />} />
         <Route path="/traffic" element={<TrafficPage controlPlane={controlPlane} />} />
+        <Route path="/performance" element={<PerformancePage controlPlane={controlPlane} />} />
         <Route
           path="/policies"
           element={<PoliciesPage auth={auth} controlPlane={controlPlane} />}

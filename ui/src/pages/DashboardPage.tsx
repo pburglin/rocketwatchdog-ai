@@ -38,6 +38,14 @@ export function DashboardPage({ auth, controlPlane }: DashboardPageProps) {
     (entry) => entry.status === 'attention'
   ).length;
   const workloadCount = controlPlane.effectiveConfig?.workloads.length ?? 0;
+  const avgLatency = controlPlane.traffic.length
+    ? Math.round(controlPlane.traffic.reduce((sum, entry) => sum + entry.duration_ms, 0) / controlPlane.traffic.length)
+    : 0;
+  const p95Latency = controlPlane.traffic.length
+    ? [...controlPlane.traffic]
+        .map((entry) => entry.duration_ms)
+        .sort((a, b) => a - b)[Math.min(controlPlane.traffic.length - 1, Math.floor(controlPlane.traffic.length * 0.95))]
+    : 0;
 
   return (
     <div className="space-y-6">
@@ -140,6 +148,16 @@ export function DashboardPage({ auth, controlPlane }: DashboardPageProps) {
           value={attentionCount}
           helper="Configured backends needing review"
         />
+        <MetricCard
+          label="Avg Latency"
+          value={`${avgLatency} ms`}
+          helper="Average over current traffic buffer"
+        />
+        <MetricCard
+          label="P95 Latency"
+          value={`${p95Latency} ms`}
+          helper="Tail latency over current traffic buffer"
+        />
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[1.3fr_0.9fr]">
@@ -206,6 +224,34 @@ export function DashboardPage({ auth, controlPlane }: DashboardPageProps) {
                 <span className="font-medium text-white">
                   {Object.keys(controlPlane.effectiveConfig?.toolSchemas ?? {}).length}
                 </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-[2rem] border border-white/10 bg-white/5 p-5">
+            <div className="flex items-center gap-3">
+              <Activity className="h-5 w-5 text-emerald-200" />
+              <h2 className="text-xl font-semibold text-white">Performance troubleshooting</h2>
+            </div>
+            <div className="mt-4 space-y-3 text-sm text-gray-300">
+              <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
+                <span>Slowest recent path</span>
+                <span className="font-medium text-white">
+                  {controlPlane.traffic.length
+                    ? [...controlPlane.traffic].sort((a, b) => b.duration_ms - a.duration_ms)[0]?.path ?? 'n/a'
+                    : 'n/a'}
+                </span>
+              </div>
+              <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
+                <span>Slowest recent backend</span>
+                <span className="font-medium text-white">
+                  {controlPlane.traffic.length
+                    ? [...controlPlane.traffic].sort((a, b) => b.duration_ms - a.duration_ms)[0]?.backend ?? 'n/a'
+                    : 'n/a'}
+                </span>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
+                Use the Traffic page filter to isolate a request ID, source IP, backend name, or integration mode while investigating latency spikes.
               </div>
             </div>
           </div>

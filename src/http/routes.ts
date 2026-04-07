@@ -81,10 +81,15 @@ export function registerRoutes(
       payload: body,
       snapshot
     });
+    const integrationMode = snapshot.platform.logging.integration_mode ?? "proxy";
+    const target = forcedTarget ?? ctx.target ?? "llm";
+    const backendName = target === "mcp" ? ctx.policy?.allowed_mcp_backends?.[0] : ctx.policy?.allowed_llm_backends?.[0];
     request.rwdTrafficMeta = {
       workloadId: ctx.workload?.id,
       reasonCodes: ctx.decision?.reasonCodes ?? [],
-      decision: ctx.decision?.action
+      decision: ctx.decision?.action,
+      backend: backendName,
+      integrationMode
     };
 
     if (isDebugModeEnabled()) {
@@ -120,9 +125,6 @@ export function registerRoutes(
       const policy = resolvePolicy(route, headers, body);
       ctx.policy = policy;
     }
-
-    const integrationMode = snapshot.platform.logging.integration_mode ?? "proxy";
-    const target = forcedTarget ?? ctx.target ?? "llm";
 
     if (integrationMode === "decision") {
       reply.send({

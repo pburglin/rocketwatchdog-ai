@@ -136,6 +136,8 @@ export interface TrafficLog {
   source_ip?: string;
   user_agent?: string;
   request_id?: string;
+  backend?: string;
+  integration_mode?: 'proxy' | 'decision';
   request_headers?: Record<string, string>;
   response_headers?: Record<string, string>;
   request_payload?: unknown;

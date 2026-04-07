@@ -8,6 +8,7 @@ import {
   BookOpen,
   Plug,
   Settings,
+  Gauge,
   LogOut,
   Menu,
   Bell,
@@ -22,6 +23,7 @@ interface LayoutProps {
 const navItems = [
   { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { path: '/traffic', icon: Activity, label: 'Traffic' },
+  { path: '/performance', icon: Gauge, label: 'Performance' },
   { path: '/policies', icon: Shield, label: 'Security Policies' },
   { path: '/references', icon: BookOpen, label: 'References' },
   { path: '/integrations', icon: Plug, label: 'Integrations' },
