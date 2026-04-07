@@ -76,6 +76,7 @@ export interface EffectiveConfigSnapshot {
       access_log: boolean;
       decision_log: boolean;
       log_dir?: string;
+      integration_mode?: "proxy" | "decision";
     };
     redaction: {
       secret_patterns: string[];
@@ -134,6 +135,27 @@ export interface TrafficLog {
   status_code?: number;
   source_ip?: string;
   user_agent?: string;
+  request_id?: string;
+  request_headers?: Record<string, string>;
+  response_headers?: Record<string, string>;
+  request_payload?: unknown;
+  response_payload?: unknown;
+  log_message?: string;
+}
+
+export interface DebugLog {
+  id: string;
+  timestamp: string;
+  requestId?: string;
+  stage: 'request' | 'response' | 'decision';
+  path?: string;
+  method?: string;
+  workload?: string;
+  statusCode?: number;
+  sourceIp?: string;
+  message: string;
+  headers?: Record<string, string>;
+  payload?: unknown;
 }
 
 export interface GuardPolicy {
@@ -156,6 +178,7 @@ export interface Integration {
   url: string;
   lastPing?: string;
   models?: string[];
+  mode?: 'proxy' | 'decision' | undefined;
 }
 
 export interface SkillScanResult {

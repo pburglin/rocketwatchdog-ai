@@ -17,6 +17,7 @@ export function SettingsPage({ auth, controlPlane }: SettingsPageProps) {
   const security = controlPlane.effectiveConfig?.platform.security;
   const logging = controlPlane.effectiveConfig?.platform.logging;
   const authMode = controlPlane.effectiveConfig?.platform.auth?.mode ?? 'none';
+  const integrationMode = logging?.integration_mode ?? 'proxy';
 
   return (
     <div className="space-y-6">
@@ -107,7 +108,49 @@ export function SettingsPage({ auth, controlPlane }: SettingsPageProps) {
               <span className="font-medium text-white">{logging?.decision_log ? 'enabled' : 'disabled'}</span>
             </div>
             <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
+              Integration mode: <span className="font-medium text-white">{integrationMode}</span>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
               Log directory: <span className="font-medium text-white">{logging?.log_dir ?? 'stdout only'}</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="grid gap-6 xl:grid-cols-[1fr_1fr]">
+        <div className="rounded-[2rem] border border-white/10 bg-white/5 p-5">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-semibold text-white">Admin debug mode</h2>
+              <p className="mt-2 text-sm text-gray-300">
+                When enabled, RocketWatchDog.ai captures request headers, response headers, and payload snapshots for troubleshooting.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void controlPlane.toggleDebugMode(!controlPlane.debugEnabled)}
+              disabled={!auth.hasPermission('write.config')}
+              className="rounded-2xl border border-white/10 bg-sky-500/20 px-4 py-3 text-sm font-medium text-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {controlPlane.debugEnabled ? 'Disable debug mode' : 'Enable debug mode'}
+            </button>
+          </div>
+          <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-gray-300">
+            Current state:{' '}
+            <span className="font-medium text-white">{controlPlane.debugEnabled ? 'enabled' : 'disabled'}</span>
+          </div>
+        </div>
+
+        <div className="rounded-[2rem] border border-white/10 bg-white/5 p-5">
+          <h2 className="text-xl font-semibold text-white">Integration patterns</h2>
+          <div className="mt-4 space-y-3 text-sm text-gray-300">
+            <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
+              <p className="font-medium text-white">Proxy mode</p>
+              <p className="mt-2">API gateway sends requests through RocketWatchDog.ai, which forwards to the LLM or MCP backend.</p>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
+              <p className="font-medium text-white">Decision mode</p>
+              <p className="mt-2">API gateway sends a request for evaluation only, receives an allow or block decision, then makes the provider call itself when allowed.</p>
             </div>
           </div>
         </div>

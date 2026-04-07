@@ -12,6 +12,8 @@ import { sanitizeSnapshotForExposure } from "../config/exposure.js";
 import { removeWorkloadConfig, upsertWorkloadConfig } from "../config/workloads.js";
 import type { WorkloadConfig } from "../types/config.js";
 import { registerTrafficRoutes } from "./traffic.js";
+import { isDebugModeEnabled } from "../logging/debug-runtime.js";
+import { recordDebugLog } from "../logging/debug-capture.js";
 
 function normalizeHeaders(
   headers: Record<string, string | string[] | undefined>
@@ -32,6 +34,8 @@ export function registerRoutes(
     payload?: Record<string, unknown>
   ) => EffectivePolicy
 ) {
+  app.decorate("snapshotManager", snapshotManager);
+
   const requireAuth = (request: any, reply: any) => {
     const snapshot = snapshotManager.get();
     const auth = authenticateRequest(request, snapshot.platform);
@@ -55,6 +59,21 @@ export function registerRoutes(
     const route = getRequestRoute(request);
     const snapshot = snapshotManager.get();
     const canonical = buildCanonicalRequest(request, headers, body);
+    request.rwdCanonicalRequest = canonical;
+
+    if (isDebugModeEnabled()) {
+      recordDebugLog(snapshot.platform, {
+        requestId: canonical.requestId,
+        stage: "request",
+        path: route,
+        method: request.method,
+        sourceIp: request.ip,
+        message: `request ${request.method} ${route}`,
+        headers,
+        payload: canonical.payload
+      });
+    }
+
     const pipeline = buildPipeline();
     const ctx = await pipeline.run({
       route,
@@ -67,6 +86,24 @@ export function registerRoutes(
       reasonCodes: ctx.decision?.reasonCodes ?? [],
       decision: ctx.decision?.action
     };
+
+    if (isDebugModeEnabled()) {
+      recordDebugLog(snapshot.platform, {
+        requestId: canonical.requestId,
+        stage: "decision",
+        path: route,
+        method: request.method,
+        workload: ctx.workload?.id,
+        sourceIp: request.ip,
+        message: `decision ${ctx.decision?.action ?? "allow"}`,
+        payload: {
+          decision: ctx.decision?.action ?? "allow",
+          reasonCodes: ctx.decision?.reasonCodes ?? [],
+          workload: ctx.workload?.id
+        }
+      });
+    }
+
     if (ctx.decision?.action === "block") {
       const override = ctx.workload?.actions?.on_block;
       reply
@@ -84,7 +121,21 @@ export function registerRoutes(
       ctx.policy = policy;
     }
 
+    const integrationMode = snapshot.platform.logging.integration_mode ?? "proxy";
     const target = forcedTarget ?? ctx.target ?? "llm";
+
+    if (integrationMode === "decision") {
+      reply.send({
+        requestId: canonical.requestId,
+        allowed: true,
+        action: ctx.decision?.action ?? "allow",
+        reasons: ctx.decision?.reasonCodes ?? [],
+        workload: ctx.policy?.workload_id ?? ctx.workload?.id,
+        target
+      });
+      return;
+    }
+
     if (target === "mcp") {
       await proxyMcp(request, reply, snapshot, ctx.policy, canonical);
       return;
@@ -212,6 +263,21 @@ export function registerRoutes(
 
   app.post("/v1/responses", async (request, reply) => {
     await handleProxyRequest(request, reply, "llm");
+  });
+
+  app.post("/v1/decision", async (request, reply) => {
+    const snapshot = snapshotManager.get();
+    const previous = snapshot.platform.logging.integration_mode;
+    snapshot.platform.logging.integration_mode = "decision";
+    try {
+      await handleProxyRequest(request, reply);
+    } finally {
+      if (previous) {
+        snapshot.platform.logging.integration_mode = previous;
+      } else {
+        delete snapshot.platform.logging.integration_mode;
+      }
+    }
   });
 
   app.post("/v1/*", async (request, reply) => {

@@ -10,6 +10,12 @@ export type RecentRequestEntry = {
   source_ip?: string;
   user_agent?: string;
   status_code: number;
+  request_id?: string;
+  request_headers?: Record<string, string>;
+  response_headers?: Record<string, string>;
+  request_payload?: unknown;
+  response_payload?: unknown;
+  log_message?: string;
 };
 
 const entries: RecentRequestEntry[] = [];

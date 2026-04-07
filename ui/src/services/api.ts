@@ -1,5 +1,6 @@
 import type {
   ConfigStatus,
+  DebugLog,
   EffectiveConfigSnapshot,
   GuardPolicy,
   HealthStatus,
@@ -195,9 +196,24 @@ export async function scanSkill(
   }
 }
 
-export async function getTrafficLogs(limit = 120): Promise<TrafficLog[]> {
+export async function getTrafficLogs(limit = 120, query = ''): Promise<TrafficLog[]> {
   const response = await fetchJson<{ items: TrafficLog[] }>(
-    `/v1/traffic/recent?limit=${encodeURIComponent(String(limit))}`
+    `/v1/traffic/recent?limit=${encodeURIComponent(String(limit))}&q=${encodeURIComponent(query)}`
+  );
+  return response.items;
+}
+
+export async function getDebugStatus(): Promise<{ enabled: boolean }> {
+  return fetchJson('/v1/debug/status');
+}
+
+export async function setDebugStatus(enabled: boolean): Promise<{ enabled: boolean }> {
+  return fetchJson('/v1/debug/status', { method: 'POST', body: JSON.stringify({ enabled }) });
+}
+
+export async function getDebugLogs(limit = 120, query = ''): Promise<DebugLog[]> {
+  const response = await fetchJson<{ items: DebugLog[] }>(
+    `/v1/debug/logs?limit=${encodeURIComponent(String(limit))}&q=${encodeURIComponent(query)}`
   );
   return response.items;
 }
@@ -242,6 +258,7 @@ export async function getIntegrations(
     return [];
   }
 
+  const mode = snapshot.platform.logging.integration_mode ?? 'proxy';
   const llmBackends = Object.entries(snapshot.platform.llm_backends).map(
     ([name, backend]): Integration => ({
       id: `llm-${name}`,
@@ -252,14 +269,11 @@ export async function getIntegrations(
         : configStatus?.lastError
           ? 'attention'
           : 'healthy',
-      detail: backend.base_url.includes('example')
-        ? 'Placeholder endpoint configured'
-        : ready?.status === 'degraded'
-          ? 'Configured while platform is degraded'
-          : 'Configured in active snapshot',
+      detail: `${mode === 'decision' ? 'Decision-only compatibility documented' : 'Proxy forwarding active'}${backend.base_url.includes('example') ? ' • placeholder endpoint configured' : ready?.status === 'degraded' ? ' • platform degraded' : ' • configured in active snapshot'}`,
       url: backend.base_url,
       lastPing: configStatus?.loadedAt ?? undefined,
       models: backend.models ?? [],
+      mode,
     })
   );
 
@@ -270,11 +284,10 @@ export async function getIntegrations(
       type: 'mcp',
       status: configStatus?.lastError ? 'attention' : 'configured',
       detail:
-        backend.base_url.includes('localhost')
-          ? 'Local MCP target configured'
-          : 'Configured in active snapshot',
+        `${mode === 'decision' ? 'Decision-only compatibility documented' : 'Proxy forwarding active'} • ${backend.base_url.includes('localhost') ? 'local MCP target configured' : 'configured in active snapshot'}`,
       url: backend.base_url,
       lastPing: configStatus?.loadedAt ?? undefined,
+      mode,
     })
   );
 

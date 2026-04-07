@@ -44,6 +44,7 @@ logging:
   access_log: true
   decision_log: true
   log_dir: "./logs"
+  integration_mode: proxy
 redaction:
   secret_patterns:
     - "(?i)api[_-]?key"

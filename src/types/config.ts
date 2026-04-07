@@ -56,6 +56,7 @@ export type PlatformConfig = {
     access_log: boolean;
     decision_log: boolean;
     log_dir?: string;
+    integration_mode?: "proxy" | "decision";
   };
   redaction: {
     secret_patterns: string[];

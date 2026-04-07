@@ -1,6 +1,8 @@
 import { startTransition, useCallback, useEffect, useState } from 'react';
 import {
   getConfigStatus,
+  getDebugLogs,
+  getDebugStatus,
   getEffectiveConfig,
   getGuardPolicies,
   getHealth,
@@ -9,9 +11,11 @@ import {
   getTrafficLogs,
   reloadConfig,
   scanSkill,
+  setDebugStatus,
 } from '../services/api';
 import type {
   ConfigStatus,
+  DebugLog,
   EffectiveConfigSnapshot,
   GuardPolicy,
   HealthStatus,
@@ -29,6 +33,9 @@ export interface ControlPlaneState {
   configStatus: ConfigStatus | null;
   effectiveConfig: EffectiveConfigSnapshot | null;
   traffic: TrafficLog[];
+  debugLogs: DebugLog[];
+  debugEnabled: boolean;
+  trafficQuery: string;
   policies: GuardPolicy[];
   integrations: Integration[];
   lastUpdated: string | null;
@@ -37,10 +44,13 @@ export interface ControlPlaneState {
   refresh: () => Promise<void>;
   triggerReload: () => Promise<void>;
   runSkillScan: (content: string, maxRiskScore: number) => Promise<void>;
+  setTrafficQuery: (value: string) => void;
+  toggleDebugMode: (enabled: boolean) => Promise<void>;
 }
 
 export function useControlPlane(): ControlPlaneState {
-  const [state, setState] = useState<Omit<ControlPlaneState, 'refresh' | 'triggerReload' | 'runSkillScan'>>({
+  const [trafficQuery, setTrafficQuery] = useState('');
+  const [state, setState] = useState<Omit<ControlPlaneState, 'refresh' | 'triggerReload' | 'runSkillScan' | 'setTrafficQuery' | 'toggleDebugMode'>>({
     loading: true,
     refreshing: false,
     error: null,
@@ -49,6 +59,9 @@ export function useControlPlane(): ControlPlaneState {
     configStatus: null,
     effectiveConfig: null,
     traffic: [],
+    debugLogs: [],
+    debugEnabled: false,
+    trafficQuery: '',
     policies: [],
     integrations: [],
     lastUpdated: null,
@@ -65,15 +78,17 @@ export function useControlPlane(): ControlPlaneState {
     }));
 
     try {
-      const [health, ready, configStatus, effectiveConfig] = await Promise.all([
+      const [health, ready, configStatus, effectiveConfig, debugStatus] = await Promise.all([
         getHealth(),
         getReady(),
         getConfigStatus(),
         getEffectiveConfig(),
+        getDebugStatus(),
       ]);
 
-      const [traffic, policies, integrations] = await Promise.all([
-        getTrafficLogs(120),
+      const [traffic, debugLogs, policies, integrations] = await Promise.all([
+        getTrafficLogs(120, trafficQuery),
+        getDebugLogs(120, trafficQuery),
         getGuardPolicies(effectiveConfig),
         getIntegrations(effectiveConfig, ready, configStatus),
       ]);
@@ -89,6 +104,9 @@ export function useControlPlane(): ControlPlaneState {
           configStatus,
           effectiveConfig,
           traffic,
+          debugLogs,
+          debugEnabled: debugStatus.enabled,
+          trafficQuery,
           policies,
           integrations,
           lastUpdated: new Date().toISOString(),
@@ -102,7 +120,7 @@ export function useControlPlane(): ControlPlaneState {
         error: error instanceof Error ? error.message : 'Unable to load control plane data',
       }));
     }
-  }, []);
+  }, [trafficQuery]);
 
   useEffect(() => {
     void refresh();
@@ -155,10 +173,18 @@ export function useControlPlane(): ControlPlaneState {
     [refresh]
   );
 
+  const toggleDebugMode = useCallback(async (enabled: boolean) => {
+    await setDebugStatus(enabled);
+    await refresh();
+  }, [refresh]);
+
   return {
     ...state,
+    trafficQuery,
     refresh,
     triggerReload,
     runSkillScan,
+    setTrafficQuery,
+    toggleDebugMode,
   };
 }

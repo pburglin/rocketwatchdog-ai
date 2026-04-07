@@ -11,6 +11,8 @@ Security and policy middleware between client apps, LLM providers, and MCP serve
 - Config reload with last-known-good fallback.
 - Output size limits and redaction.
 - Strict TypeScript validation in CI-friendly `npm run lint` / `npm run build` flows.
+- Admin-controlled debug mode with searchable request/response header and payload capture.
+- Two integration patterns: full proxy mode and decision-only mode.
 
 ## Config essentials
 
@@ -27,8 +29,9 @@ Configs live under `configs/`:
 - If `require_tool_schema_validation` is enabled, every allowlisted tool must have a matching JSON schema in `configs/tools` (schemas are validated at load time, and startup/reload fails fast when they are missing).
 - Redaction patterns support inline flags like `(?i)` for case-insensitive matching.
 - JWT auth can enforce `jwt_issuer` and/or `jwt_audience` when configured. Expired tokens are rejected when `exp` is present.
+- `logging.integration_mode` supports `proxy` or `decision`.
 
-```
+```text
 configs/
   platform.yaml
   workloads/
@@ -48,11 +51,63 @@ configs/
 - `GET /v1/config/status`
 - `GET /v1/config/effective`
 - `POST /v1/config/reload`
+- `GET /v1/debug/status`
+- `POST /v1/debug/status`
+- `GET /v1/debug/logs`
 - `POST /v1/proxy/llm`
 - `POST /v1/proxy/mcp`
+- `POST /v1/decision`
 - `POST /v1/chat/completions`
 - `POST /v1/responses`
 - `POST /v1/skills/scan`
+
+## Integration patterns
+
+### 1) Proxy mode
+
+Use when RocketWatchDog.ai should sit inline between your API gateway and the provider.
+
+Flow:
+1. API gateway sends request to RocketWatchDog.ai.
+2. RocketWatchDog.ai evaluates policy and guards.
+3. If allowed, RocketWatchDog.ai forwards to the configured LLM or MCP backend.
+4. RocketWatchDog.ai optionally redacts the upstream reply and returns it to the gateway.
+
+How to enable:
+- Set `logging.integration_mode: proxy` in `configs/platform.yaml`.
+- Send requests to `/v1/proxy/llm`, `/v1/proxy/mcp`, `/v1/chat/completions`, or `/v1/responses`.
+
+Pros:
+- Simplest deployment model for centralized enforcement.
+- One place for request validation, forwarding, and response sanitization.
+- Easier to add debug capture because full request/response context is present.
+
+Cons:
+- RocketWatchDog.ai stays in the latency path.
+- Provider-specific retry behavior lives here rather than in your API gateway.
+
+### 2) Decision mode
+
+Use when your API gateway should keep provider ownership and ask RocketWatchDog.ai only for an allow or block decision.
+
+Flow:
+1. API gateway sends request context to RocketWatchDog.ai.
+2. RocketWatchDog.ai evaluates policy and guards.
+3. RocketWatchDog.ai returns a decision payload with `allowed`, `action`, `reasons`, `workload`, and `target`.
+4. API gateway calls the LLM itself only when the decision allows it.
+
+How to use:
+- Either set `logging.integration_mode: decision` in `configs/platform.yaml` for default behavior, or call `POST /v1/decision` explicitly.
+- Treat an allow response as a thumbs up and a `guard_rejected` or `allowed: false` response as a thumbs down.
+
+Pros:
+- Keeps provider credentials, retry logic, and network policy inside your API gateway.
+- Lower coupling if RocketWatchDog.ai is only meant to be a policy engine.
+- Easier to adopt incrementally in existing gateways.
+
+Cons:
+- Gateway must implement the provider call path itself.
+- End-to-end response redaction cannot happen inside RocketWatchDog.ai because the provider response never flows through it.
 
 ## Quick demo (main features)
 
@@ -107,35 +162,45 @@ curl -X POST http://localhost:8080/v1/proxy/llm \
 
 Expected: a JSON response from the configured LLM backend. If the prompt violates guards, you’ll receive `{"error":"guard_rejected", "reasons":[...]}`.
 
-### 5) MCP proxy (tools)
-
-Prerequisites:
-- run a reachable MCP backend at the configured URL in `configs/platform.yaml` (`internal_tools` defaults to `http://localhost:9001`)
-- include `meta.userId` and `meta.sessionId` because the `sensitive-mcp` workload requires both
+### 5) Decision-only evaluation
 
 ```bash
-curl -X POST http://localhost:8080/v1/proxy/mcp \
+curl -X POST http://localhost:8080/v1/decision \
   -H "content-type: application/json" \
-  -H "x-rwd-workload: sensitive-mcp" \
-  -d '{"tool":"read_customer_record","arguments":{"id":"123"},"meta":{"userId":"demo-user","sessionId":"demo-session"}}'
+  -H "x-rwd-workload: public-chat" \
+  -d '{"model":"gpt-main","messages":[{"role":"user","content":"hello"}]}'
 ```
 
-Expected: MCP backend response or `guard_rejected` if the tool is disallowed or schema validation fails. MCP prompt/message payloads and tool arguments can be redacted before forwarding when input secret redaction is enabled.
+Expected: a decision payload like:
 
-Notes:
-- Set `maxRiskScore` in the request or `platform.skills.max_risk_score` to tune the threshold.
-- `allowed` is evaluated against the active threshold.
+```json
+{"requestId":"...","allowed":true,"action":"allow","reasons":[],"workload":"public-chat","target":"llm"}
+```
+
+### 6) Debug mode controls
+
+```bash
+curl http://localhost:8080/v1/debug/status
+curl -X POST http://localhost:8080/v1/debug/status \
+  -H "content-type: application/json" \
+  -d '{"enabled":true}'
+curl 'http://localhost:8080/v1/debug/logs?limit=20&q=req-123'
+```
+
+Expected: when debug mode is enabled, recent request/response header and payload captures appear in the debug log feed and are filterable by substring.
 
 ## Troubleshooting
 
 - **401/403 from protected endpoints**: verify `platform.auth` settings and include `x-api-key` or `Authorization: Bearer ...` headers if enabled.
 - **LLM/MCP backend errors**: confirm backend URLs and env vars (e.g., `ROCKETWATCHDOG_LLM_API_KEY`, `ROCKETWATCHDOG_MCP_TOKEN`).
-- **Guard rejections**: inspect `reasons` in the response; adjust workload guard settings in `configs/workloads/*.yaml`.
-- **Config reload fails**: hit `/v1/config/reload` and check the error in the response; invalid schemas, duplicate allowlist entries, or missing required tool schemas keep the last-known-good snapshot.
+- **Guard rejections**: inspect `reasons` in the response, adjust workload guard settings in `configs/workloads/*.yaml`, or use decision mode to integrate those results into gateway-native allow/deny flows.
+- **Config reload fails**: hit `/v1/config/reload` and check the error in the response. Invalid schemas, duplicate allowlist entries, or missing required tool schemas keep the last-known-good snapshot.
 - **Need to inspect config health quickly**: hit `/v1/config/status` for reload timestamps, last error, and whether the server is currently serving a last-known-good config snapshot.
+- **Need to troubleshoot a specific request**: enable debug mode temporarily, then filter `/v1/debug/logs` or the Traffic UI by request ID, source IP, or any known header value.
+
 ## Guard pipeline notes
 
-- Request guards run on inbound payloads; output guards run only when a `response` field is present.
+- Request guards run on inbound payloads, output guards run only when a `response` field is present, and decision mode stops after the guard decision instead of forwarding upstream.
 - Input secret redaction is controlled by `guards.input.secret_redaction` (defaults off). It applies to OpenAI messages/tool metadata and MCP prompts/message payloads/tool arguments before forwarding upstream. Output redaction remains under `guards.output`.
 - Upstream reply forwarding strips hop-by-hop and cookie headers before returning responses to clients.
 - Guard decisions preserve earlier block results unless an output response is explicitly evaluated.
@@ -147,9 +212,10 @@ Notes:
 npm run lint
 npm test
 npm run build
+cd ui && npm run build
 ```
 
-Use these together before cutting a release; they catch type drift, guard/config regressions, and adapter issues.
+Use these together before cutting a release. They catch type drift, guard/config regressions, adapter issues, and UI compile failures.
 
 ## Docker
 
@@ -186,4 +252,4 @@ kubectl -n rocketwatchdog expose deployment rocketwatchdog --type=ClusterIP --po
 
 Mount `/app/configs` from the ConfigMap and use a Service/Ingress for traffic.
 
-See `/docs` for architecture and skills gateway notes.
+See `/docs` for architecture and task planning notes.

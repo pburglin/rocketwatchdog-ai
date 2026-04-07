@@ -57,6 +57,23 @@ export function TrafficPage({ controlPlane }: TrafficPageProps) {
         </div>
       </section>
 
+      <section className="rounded-[2rem] border border-white/10 bg-white/5 p-5">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h2 className="text-xl font-semibold text-white">Filter traffic and debug logs</h2>
+            <p className="mt-2 text-sm text-gray-300">
+              Search any substring across captured log messages, headers, payloads, request IDs, or source IPs.
+            </p>
+          </div>
+          <input
+            value={controlPlane.trafficQuery}
+            onChange={(event) => controlPlane.setTrafficQuery(event.target.value)}
+            placeholder="Filter by correlation ID, header value, source IP, etc."
+            className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none lg:max-w-xl"
+          />
+        </div>
+      </section>
+
       <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <div className="rounded-[2rem] border border-white/10 bg-white/5 p-5">
           <h2 className="text-xl font-semibold text-white">Recent latency profile</h2>
@@ -88,8 +105,8 @@ export function TrafficPage({ controlPlane }: TrafficPageProps) {
               not just requests initiated by this browser session.
             </p>
             <p>
-              Policy decisions, blocked requests, and proxy failures are captured by the backend and
-              rendered here as soon as the polling cycle refreshes.
+              When debug mode is enabled, matching request and response headers plus payload snapshots are included
+              in the searchable log stream below.
             </p>
           </div>
         </div>
@@ -141,6 +158,37 @@ export function TrafficPage({ controlPlane }: TrafficPageProps) {
               ))}
             </tbody>
           </table>
+        </div>
+      </section>
+
+      <section className="rounded-[2rem] border border-white/10 bg-white/5 p-5">
+        <div className="flex items-center justify-between gap-4">
+          <h2 className="text-xl font-semibold text-white">Debug log matches</h2>
+          <StatusBadge label={controlPlane.debugEnabled ? 'debug on' : 'debug off'} tone={controlPlane.debugEnabled ? 'attention' : 'configured'} />
+        </div>
+        <div className="mt-4 space-y-3">
+          {controlPlane.debugLogs.map((entry) => (
+            <div key={entry.id} className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-gray-300">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="font-medium text-white">{entry.message}</span>
+                <span className="font-mono text-xs text-sky-200">{entry.requestId ?? 'no-request-id'}</span>
+                <span className="text-xs uppercase tracking-[0.2em] text-gray-400">{entry.stage}</span>
+              </div>
+              <p className="mt-2 text-xs text-gray-400">
+                {formatDistanceToNow(new Date(entry.timestamp), { addSuffix: true })}
+                {entry.sourceIp ? ` • ${entry.sourceIp}` : ''}
+                {entry.path ? ` • ${entry.path}` : ''}
+              </p>
+              <pre className="mt-3 overflow-x-auto whitespace-pre-wrap rounded-2xl border border-white/10 bg-slate-950/70 p-3 text-xs text-slate-200">
+                {JSON.stringify(entry, null, 2)}
+              </pre>
+            </div>
+          ))}
+          {controlPlane.debugLogs.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-white/10 bg-black/10 p-6 text-sm text-gray-400">
+              No matching debug logs yet.
+            </div>
+          ) : null}
         </div>
       </section>
     </div>

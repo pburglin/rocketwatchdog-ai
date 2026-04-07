@@ -1,6 +1,9 @@
 import "fastify";
 
 declare module "fastify" {
+  interface FastifyInstance {
+    snapshotManager?: import("./config/snapshot.js").ConfigSnapshotManager;
+  }
   interface FastifyRequest {
     requestId?: string;
     rwdStartTimeMs?: number;
@@ -9,5 +12,6 @@ declare module "fastify" {
       reasonCodes?: string[];
       decision?: string;
     };
+    rwdCanonicalRequest?: import("./types/canonical.js").CanonicalRequest;
   }
 }
