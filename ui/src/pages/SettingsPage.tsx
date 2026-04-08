@@ -130,6 +130,7 @@ export function SettingsPage({ auth, controlPlane }: SettingsPageProps) {
               type="button"
               onClick={() => void controlPlane.toggleDebugMode(!controlPlane.debugEnabled)}
               disabled={!auth.hasPermission('write.config')}
+              title={auth.hasPermission('write.config') ? 'Toggle runtime debug capture' : 'This demo user has read-only access'}
               className="rounded-2xl border border-white/10 bg-sky-500/20 px-4 py-3 text-sm font-medium text-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {controlPlane.debugEnabled ? 'Disable debug mode' : 'Enable debug mode'}
@@ -138,6 +139,11 @@ export function SettingsPage({ auth, controlPlane }: SettingsPageProps) {
           <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-gray-300">
             Current state:{' '}
             <span className="font-medium text-white">{controlPlane.debugEnabled ? 'enabled' : 'disabled'}</span>
+            {!auth.hasPermission('write.config') ? (
+              <p className="mt-2 text-xs text-amber-200">
+                This account is read-only for config changes. Sign in as an admin or operator demo user to toggle debug mode.
+              </p>
+            ) : null}
           </div>
         </div>
 

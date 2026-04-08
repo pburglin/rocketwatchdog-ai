@@ -36,7 +36,7 @@ const DEMO_USERS: Record<string, { password: string; user: User; permissions: RB
     user: { id: '2', email: 'operator@rocketwatchdog.ai', name: 'Operator User', role: 'operator' },
     permissions: {
       read: { traffic_logs: true, security_policies: true, integrations: true, config: true },
-      write: { security_policies: false, integrations: false, config: false },
+      write: { security_policies: false, integrations: false, config: true },
     },
   },
   'viewer@rocketwatchdog.ai': {
