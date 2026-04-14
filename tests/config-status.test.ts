@@ -102,7 +102,8 @@ describe("config status and readiness", () => {
       lastError: null,
       isUsingLastKnownGood: false,
       workloadCount: 1,
-      toolSchemaCount: 0
+      toolSchemaCount: 0,
+      debugModeEnabled: false
     });
 
     const readyRes = await app.inject({ method: "GET", url: "/readyz" });

@@ -74,6 +74,7 @@ describe("OpenAI proxy", () => {
         secret_redaction: true
       },
       output_guards: {
+        secret_redaction: false,
         pii_redaction: false
       },
       tool_guards: {
@@ -160,5 +161,23 @@ describe("OpenAI proxy", () => {
       "content-type": "application/json",
       "x-upstream": "ok"
     });
+  });
+
+  it("does not redact upstream output secrets when output secret redaction is disabled", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      status: 200,
+      headers: new Headers({ "content-type": "application/json" }),
+      text: async () => JSON.stringify({ secret: "sk-1234567890ABCDE12345" })
+    } as any));
+
+    await proxyOpenAI(
+      mockRequest as FastifyRequest,
+      mockReply as FastifyReply,
+      mockSnapshot,
+      mockPolicy,
+      mockCanonical
+    );
+
+    expect(mockReply.send).toHaveBeenCalledWith(JSON.stringify({ secret: "sk-1234567890ABCDE12345" }));
   });
 });

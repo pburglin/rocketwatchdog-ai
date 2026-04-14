@@ -7,7 +7,7 @@ import { extractTextFromMessages } from "../utils/extract.js";
 import { redactSecrets } from "../core/guard/redaction.js";
 import { redactMessages } from "../utils/redact-messages.js";
 import { redactObjectStrings } from "../utils/redact-object.js";
-import { buildSafeReplyHeaders } from "./http.js";
+import { buildOutputRedactionPatterns, buildSafeReplyHeaders } from "./http.js";
 
 function extractMcpText(payload: unknown): string {
   if (!payload || typeof payload !== "object") return "";
@@ -142,10 +142,7 @@ export async function proxyMcp(
     reply.code(413).send({ error: "output_too_large" });
     return;
   }
-  const patterns = [
-    ...snapshot.platform.redaction.secret_patterns,
-    ...(policy.output_guards.pii_redaction ? snapshot.platform.redaction.pii_patterns ?? [] : [])
-  ];
+  const patterns = buildOutputRedactionPatterns(policy, snapshot.platform);
   if (patterns.length > 0 && response.headers.get("content-type")?.includes("application/json")) {
     try {
       const parsed = JSON.parse(text);

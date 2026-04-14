@@ -246,4 +246,57 @@ policy:
 
     expect(() => loadConfigDir(dir)).toThrow(/max_payload_chars/i);
   });
+
+  it("rejects non-positive runtime limits and unsupported URL protocols", () => {
+    const dir = makeConfigDir({
+      "platform.yaml": `
+server:
+  host: 0.0.0.0
+  port: 8080
+  request_timeout_ms: 0
+  max_body_size_kb: 0
+routing:
+  workload_header: x-rwd-workload
+  allow_client_workload_override: false
+  default_workload: default
+security:
+  default_level: L1
+  fail_closed_on_invalid_config: true
+  normalize_unicode: true
+  redact_secrets_in_logs: false
+  default_action_on_guard_error: block
+logging:
+  level: info
+  access_log: false
+  decision_log: false
+  debug_capture:
+    max_entries: 0
+redaction:
+  secret_patterns: []
+llm_backends:
+  primary:
+    provider: openai
+    base_url: ftp://example.com
+    timeout_ms: 0
+    models: [gpt-main]
+mcp_backends:
+  primary:
+    transport: http
+    base_url: https://mcp.example.com
+    timeout_ms: 0
+`,
+      "workloads/default.yaml": `
+id: default
+match: {}
+policy:
+  level: L1
+  allowed_llm_backends: [primary]
+  allowed_mcp_backends: [primary]
+`
+    });
+
+    expect(() => loadConfigDir(dir)).toThrow(
+      /invalid url protocol|timeout_ms|max_entries|request_timeout_ms|max_body_size_kb/i
+    );
+  });
 });

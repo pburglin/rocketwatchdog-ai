@@ -1,6 +1,6 @@
 import { getDebugLogs, recordDebugLog } from "../logging/debug-capture.js";
 import { getRecentRequests, recordRecentRequest } from "../logging/recent-requests.js";
-import { isDebugModeEnabled, setDebugModeEnabled } from "../logging/debug-runtime.js";
+import { isDebugModeEnabled, persistDebugModeState } from "../logging/debug-runtime.js";
 function toAction(statusCode, decision) {
     if (decision === "block")
         return "block";
@@ -102,15 +102,20 @@ export function registerTrafficRoutes(app, requireAuth) {
     app.get("/v1/debug/status", async (request, reply) => {
         if (!requireAuth(request, reply))
             return;
-        return { enabled: isDebugModeEnabled() };
+        return { enabled: isDebugModeEnabled(), persisted: true };
     });
     app.post("/v1/debug/status", async (request, reply) => {
         if (!requireAuth(request, reply))
             return;
         const body = (request.body ?? {});
         const enabled = Boolean(body.enabled);
-        setDebugModeEnabled(enabled);
-        return { enabled };
+        const configDir = app.snapshotManager?.getConfigDir?.();
+        if (!configDir) {
+            reply.code(500).send({ error: "config_manager_unavailable" });
+            return;
+        }
+        persistDebugModeState(configDir, enabled);
+        return { enabled, persisted: true };
     });
     app.get("/v1/debug/logs", async (request, reply) => {
         if (!requireAuth(request, reply))

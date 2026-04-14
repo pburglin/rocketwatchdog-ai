@@ -1,6 +1,7 @@
 import type {
   ConfigStatus,
   DebugLog,
+  DebugStatus,
   EffectiveConfigSnapshot,
   GuardPolicy,
   HealthStatus,
@@ -10,7 +11,11 @@ import type {
   WorkloadConfig,
 } from '../types/api';
 
-export const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8080';
+const inferredApiBase = typeof window !== 'undefined'
+  ? `${window.location.protocol}//${window.location.hostname}:8080`
+  : 'http://127.0.0.1:8080';
+
+export const API_BASE = import.meta.env.VITE_API_BASE || inferredApiBase;
 
 export class ApiError extends Error {
   status: number;
@@ -203,11 +208,11 @@ export async function getTrafficLogs(limit = 120, query = ''): Promise<TrafficLo
   return response.items;
 }
 
-export async function getDebugStatus(): Promise<{ enabled: boolean }> {
+export async function getDebugStatus(): Promise<DebugStatus> {
   return fetchJson('/v1/debug/status');
 }
 
-export async function setDebugStatus(enabled: boolean): Promise<{ enabled: boolean }> {
+export async function setDebugStatus(enabled: boolean): Promise<DebugStatus> {
   return fetchJson('/v1/debug/status', { method: 'POST', body: JSON.stringify({ enabled }) });
 }
 

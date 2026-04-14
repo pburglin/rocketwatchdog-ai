@@ -95,11 +95,20 @@ function findDuplicates(items) {
 }
 function validateUrl(value, label, errors) {
     try {
-        // eslint-disable-next-line no-new
-        new URL(value);
+        const url = new URL(value);
+        if (url.protocol !== "http:" && url.protocol !== "https:") {
+            errors.push(`Invalid URL protocol for ${label}: ${value}`);
+        }
     }
     catch {
         errors.push(`Invalid URL for ${label}: ${value}`);
+    }
+}
+function validatePositiveInteger(value, label, errors, min = 1) {
+    if (value === undefined)
+        return;
+    if (!Number.isInteger(value) || value < min) {
+        errors.push(`${label} must be an integer >= ${min}`);
     }
 }
 function validateSnapshot(platform, workloads, toolSchemas) {
@@ -132,8 +141,17 @@ function validateSnapshot(platform, workloads, toolSchemas) {
     if (platform.auth?.mode === "api_key" && !platform.auth.api_key_env) {
         errors.push("Platform auth.api_key_env is required when auth.mode=api_key");
     }
+    for (const [name, backend] of Object.entries(platform.llm_backends)) {
+        validatePositiveInteger(backend.timeout_ms, `llm_backends.${name}.timeout_ms`, errors);
+    }
+    for (const [name, backend] of Object.entries(platform.mcp_backends)) {
+        validatePositiveInteger(backend.timeout_ms, `mcp_backends.${name}.timeout_ms`, errors);
+    }
+    validatePositiveInteger(platform.server.request_timeout_ms, "server.request_timeout_ms", errors);
+    validatePositiveInteger(platform.server.max_body_size_kb, "server.max_body_size_kb", errors);
     const debugCapture = platform.logging.debug_capture;
-    if (debugCapture?.max_payload_chars && debugCapture.max_payload_chars < 32) {
+    validatePositiveInteger(debugCapture?.max_entries, "logging.debug_capture.max_entries", errors);
+    if (debugCapture?.max_payload_chars !== undefined && debugCapture.max_payload_chars < 32) {
         errors.push("logging.debug_capture.max_payload_chars must be at least 32 characters");
     }
     for (const workload of workloads) {

@@ -16,8 +16,7 @@
 - Add CLI and UI admin troubleshooting features for performance and latency analysis.
 - Add reproducible performance test scripts for representative request mixes.
 - Publish documented benchmark steps and baseline results in the README.
+- Persist operator-controlled runtime settings like debug mode across restarts/config reloads. ✅
 
 ## Pending
-- Persist operator-controlled runtime settings like debug mode across restarts/config reloads.
-- Add retention/size controls for captured debug payload logs.
 - Consider redaction guardrails specific to debug capture to avoid over-logging sensitive content in long-running environments.

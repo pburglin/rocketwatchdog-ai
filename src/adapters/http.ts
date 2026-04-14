@@ -1,3 +1,5 @@
+import type { EffectivePolicy, PlatformConfig } from "../types/config.js";
+
 const unsafeReplyHeaders = new Set([
   "connection",
   "content-encoding",
@@ -21,4 +23,21 @@ export function buildSafeReplyHeaders(headers: Headers): Record<string, string> 
     forwarded[key] = value;
   }
   return forwarded;
+}
+
+export function buildOutputRedactionPatterns(
+  policy: EffectivePolicy,
+  platform: PlatformConfig
+): string[] {
+  const patterns: string[] = [];
+
+  if (policy.output_guards.secret_redaction) {
+    patterns.push(...platform.redaction.secret_patterns);
+  }
+
+  if (policy.output_guards.pii_redaction) {
+    patterns.push(...(platform.redaction.pii_patterns ?? []));
+  }
+
+  return patterns;
 }

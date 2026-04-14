@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { loadDebugModeState } from "../logging/debug-runtime.js";
 import { loadConfigDir } from "./loader.js";
 export class ConfigSnapshotManager {
     configDir;
@@ -15,6 +16,7 @@ export class ConfigSnapshotManager {
         this.current = snapshot;
         this.lastError = null;
         this.lastReloadSucceededAt = snapshot.loadedAt;
+        loadDebugModeState(this.configDir);
         return snapshot;
     }
     reload() {
@@ -24,6 +26,7 @@ export class ConfigSnapshotManager {
             this.current = snapshot;
             this.lastError = null;
             this.lastReloadSucceededAt = snapshot.loadedAt;
+            loadDebugModeState(this.configDir);
             return snapshot;
         }
         catch (err) {
@@ -48,7 +51,8 @@ export class ConfigSnapshotManager {
             lastError: this.lastError,
             isUsingLastKnownGood: this.current !== null && this.lastError !== null,
             workloadCount: this.current?.workloads.length ?? 0,
-            toolSchemaCount: Object.keys(this.current?.toolSchemas ?? {}).length
+            toolSchemaCount: Object.keys(this.current?.toolSchemas ?? {}).length,
+            debugModeEnabled: loadDebugModeState(this.configDir)
         };
     }
     get() {

@@ -8,6 +8,7 @@ export type ConfigStatus = {
     isUsingLastKnownGood: boolean;
     workloadCount: number;
     toolSchemaCount: number;
+    debugModeEnabled: boolean;
 };
 export declare class ConfigSnapshotManager {
     private configDir;

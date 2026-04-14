@@ -5,13 +5,13 @@ Security and policy middleware between client apps, LLM providers, and MCP serve
 ## What it does
 
 - Guardrails for prompt injection, tool allowlists, and tool invocation schemas.
-- Secret/PII redaction on inbound prompts and outbound responses (JSON or text payloads).
+- Secret/PII redaction on inbound prompts and outbound responses (JSON or text payloads), only when the corresponding output guard is enabled.
 - Workload-specific policy overrides based on headers, metadata, or route.
 - Skills security gateway for scanning new skills before install.
 - Config reload with last-known-good fallback.
 - Output size limits and redaction.
 - Strict TypeScript validation in CI-friendly `npm run lint` / `npm run build` flows.
-- Admin-controlled debug mode with searchable request/response header and payload capture.
+- Admin-controlled debug mode with searchable request/response header and payload capture, persisted across reloads and restarts.
 - Two integration patterns: full proxy mode and decision-only mode.
 - CLI and UI support for performance and latency troubleshooting.
 - Reproducible performance benchmark scripts for representative request mixes.
@@ -22,10 +22,12 @@ Configs live under `configs/`:
 
 - Workload IDs must be unique, and the configured default workload must exist.
 - Duplicate `allowed_llm_backends`, `allowed_mcp_backends`, `allowed_models`, and `allowed_tools` entries are rejected at load time.
-- LLM/MCP backend `base_url` values must be valid absolute URLs.
+- LLM/MCP backend `base_url` values must be valid absolute HTTP(S) URLs.
 - Duplicate model names inside a single LLM backend are rejected at load time.
 - `auth.mode: api_key` requires `auth.api_key_env`; MCP `auth.type: bearer_env` requires `auth.token_env`.
 - `logging.debug_capture.max_entries` and `logging.debug_capture.max_payload_chars` let you cap in-memory debug retention and truncate oversized captured payloads.
+- Runtime admin state such as debug mode is persisted in `configs/runtime-state.json` so troubleshooting survives reloads and process restarts.
+- Runtime limits such as server/body size ceilings and backend timeout values must be positive integers.
 - Config loading aggregates multiple validation failures into one error so broken reloads are easier to diagnose.
 - `allowed_models` is enforced (requests must specify a model in the allowlist).
 - If `require_tool_allowlist` is enabled and `allowed_tools` is empty, any tool usage is rejected with `TOOL_ALLOWLIST_EMPTY`.
@@ -229,7 +231,7 @@ Cons:
 ### UI
 - **Traffic** page supports free-text filtering across request IDs, headers, payloads, source IPs, backend names, and integration mode.
 - **Performance** page highlights slowest requests and backend latency summaries.
-- **Settings** page lets admin users toggle debug mode and review integration-mode posture.
+- **Settings** page lets admin users toggle debug mode, review integration-mode posture, and keep the debug toggle active across reloads and restarts.
 - Debug capture keeps only the most recent configured entries and truncates large payload strings before storing them in memory.
 
 ### CLI

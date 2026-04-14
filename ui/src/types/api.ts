@@ -17,6 +17,12 @@ export interface ConfigStatus extends ConfigHealth {
   configDir?: string;
   workloadCount?: number;
   toolSchemaCount?: number;
+  debugModeEnabled?: boolean;
+}
+
+export interface DebugStatus {
+  enabled: boolean;
+  persisted?: boolean;
 }
 
 export interface EffectiveConfigSnapshot {

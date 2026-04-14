@@ -7,7 +7,7 @@ import { extractTextFromMessages, extractToolDefinitions, extractToolInvocations
 import { redactMessages } from "../utils/redact-messages.js";
 import { redactSecrets } from "../core/guard/redaction.js";
 import { redactObjectStrings } from "../utils/redact-object.js";
-import { buildSafeReplyHeaders } from "./http.js";
+import { buildOutputRedactionPatterns, buildSafeReplyHeaders } from "./http.js";
 
 export async function proxyOpenAI(
   request: FastifyRequest,
@@ -124,10 +124,7 @@ export async function proxyOpenAI(
     reply.code(413).send({ error: "output_too_large" });
     return;
   }
-  const patterns = [
-    ...snapshot.platform.redaction.secret_patterns,
-    ...(policy.output_guards.pii_redaction ? snapshot.platform.redaction.pii_patterns ?? [] : [])
-  ];
+  const patterns = buildOutputRedactionPatterns(policy, snapshot.platform);
 
   if (patterns.length > 0 && response.headers.get("content-type")?.includes("application/json")) {
     try {

@@ -22,4 +22,14 @@ export function buildSafeReplyHeaders(headers) {
     }
     return forwarded;
 }
+export function buildOutputRedactionPatterns(policy, platform) {
+    const patterns = [];
+    if (policy.output_guards.secret_redaction) {
+        patterns.push(...platform.redaction.secret_patterns);
+    }
+    if (policy.output_guards.pii_redaction) {
+        patterns.push(...(platform.redaction.pii_patterns ?? []));
+    }
+    return patterns;
+}
 //# sourceMappingURL=http.js.map
