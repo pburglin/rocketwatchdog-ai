@@ -17,8 +17,33 @@ function extractMcpText(payload) {
         const fromMessages = extractTextFromMessages(messages);
         if (fromMessages)
             return fromMessages;
+        const args = params.arguments;
+        if (args && typeof args === "object") {
+            const candidateText = [
+                args.prompt,
+                args.input,
+                args.query
+            ].find((value) => typeof value === "string");
+            if (typeof candidateText === "string")
+                return candidateText;
+        }
     }
     return "";
+}
+function extractMcpToolInvocations(payload) {
+    if (typeof payload.tool === "string") {
+        return [{ name: payload.tool, arguments: payload.arguments }];
+    }
+    if (payload.method === "tools/call") {
+        const params = payload.params;
+        if (params && typeof params === "object" && typeof params.name === "string") {
+            return [{
+                    name: params.name,
+                    arguments: params.arguments
+                }];
+        }
+    }
+    return undefined;
 }
 export async function proxyMcp(request, reply, snapshot, policy, canonical) {
     const fetchImpl = globalThis.fetch ?? undiciFetch;
@@ -34,9 +59,7 @@ export async function proxyMcp(request, reply, snapshot, policy, canonical) {
     }
     const body = request.body;
     const inputText = extractMcpText(body);
-    const toolInvocations = typeof body.tool === "string"
-        ? [{ name: body.tool, arguments: body.arguments }]
-        : undefined;
+    const toolInvocations = extractMcpToolInvocations(body);
     const guardResult = runGuards({
         text: inputText,
         ...(toolInvocations ? { toolInvocations } : {})
@@ -68,12 +91,14 @@ export async function proxyMcp(request, reply, snapshot, policy, canonical) {
         if (params && typeof params === "object") {
             const messages = params.messages;
             const { redactedMessages } = redactMessages(messages, snapshot.platform.redaction.secret_patterns);
-            if (redactedMessages !== messages) {
+            const { redacted: redactedParamsArguments } = redactObjectStrings(params.arguments, snapshot.platform.redaction.secret_patterns);
+            if (redactedMessages !== messages || redactedParamsArguments !== params.arguments) {
                 forwardBody = {
                     ...forwardBody,
                     params: {
                         ...params,
-                        messages: redactedMessages
+                        messages: redactedMessages,
+                        arguments: redactedParamsArguments
                     }
                 };
             }

@@ -22,7 +22,7 @@ const highImpactAdvicePatterns = [
     /this\s+is\s+financial\s+advice/i,
     /diagnos(?:e|is)\b/i
 ];
-export function detectOwaspInputRisks(text, maxPromptChars, toolInvocations) {
+export function detectOwaspInputRisks(text, maxPromptChars, toolInvocations, maxToolInvocationsPerRequest = 5) {
     const reasons = [];
     if (detectPromptInjection(text).length > 0) {
         reasons.push("LLM01_PROMPT_INJECTION");
@@ -42,7 +42,7 @@ export function detectOwaspInputRisks(text, maxPromptChars, toolInvocations) {
     if (modelTheftPatterns.some((pattern) => pattern.test(text))) {
         reasons.push("LLM10_MODEL_THEFT");
     }
-    if (toolInvocations && toolInvocations.length >= 5) {
+    if (toolInvocations && toolInvocations.length >= maxToolInvocationsPerRequest) {
         reasons.push("LLM08_EXCESSIVE_AGENCY");
     }
     return reasons;

@@ -15,6 +15,50 @@ function toAction(statusCode, decision) {
 function stringifyPayload(payload) {
     return typeof payload === "undefined" ? undefined : payload;
 }
+function readNumericHeader(headers, names) {
+    for (const name of names) {
+        const value = headers[name];
+        if (!value)
+            continue;
+        const parsed = Number.parseInt(value, 10);
+        if (Number.isFinite(parsed))
+            return parsed;
+    }
+    return undefined;
+}
+function parseRetryAfterMs(headers) {
+    const retryAfter = headers["retry-after"];
+    if (!retryAfter) {
+        return readNumericHeader(headers, ["x-ratelimit-reset-ms", "x-retry-after-ms"]);
+    }
+    const seconds = Number.parseFloat(retryAfter);
+    if (Number.isFinite(seconds)) {
+        return Math.max(0, Math.round(seconds * 1000));
+    }
+    const retryAt = Date.parse(retryAfter);
+    if (Number.isFinite(retryAt)) {
+        return Math.max(0, retryAt - Date.now());
+    }
+    return undefined;
+}
+function extractRetryMetadata(responseHeaders) {
+    const retryCount = readNumericHeader(responseHeaders, [
+        "x-rwd-upstream-retries",
+        "x-upstream-retries",
+        "x-retry-count",
+        "retry-count"
+    ]);
+    const upstreamStatusCode = readNumericHeader(responseHeaders, [
+        "x-rwd-upstream-status",
+        "x-upstream-status"
+    ]);
+    const retryAfterMs = parseRetryAfterMs(responseHeaders);
+    return {
+        ...(retryCount !== undefined ? { retry_count: retryCount } : {}),
+        ...(upstreamStatusCode !== undefined ? { upstream_status_code: upstreamStatusCode } : {}),
+        ...(retryAfterMs !== undefined ? { retry_after_ms: retryAfterMs } : {})
+    };
+}
 export function registerTrafficLogging(app) {
     app.addHook("onRequest", async (request) => {
         request.rwdStartTimeMs = Date.now();
@@ -47,6 +91,7 @@ export function registerTrafficLogging(app) {
             ...(request.requestId ? { request_id: request.requestId } : {}),
             ...(request.rwdTrafficMeta?.backend ? { backend: request.rwdTrafficMeta.backend } : {}),
             ...(request.rwdTrafficMeta?.integrationMode ? { integration_mode: request.rwdTrafficMeta.integrationMode } : {}),
+            ...extractRetryMetadata(responseHeaders),
             ...(isDebugModeEnabled()
                 ? {
                     request_headers: requestHeaders,

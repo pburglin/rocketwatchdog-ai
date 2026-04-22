@@ -4,9 +4,13 @@ Security and policy middleware between client apps, LLM providers, and MCP serve
 
 ## What it does
 
-- Guardrails for prompt injection, tool allowlists, and tool invocation schemas.
+- Guardrails for prompt injection (including base64/hex-encoded, XML-embedded, and mixed-script obfuscation), tool allowlists, and tool invocation schemas.
+- Mixed-script homoglyph detection (Latin+Cyrillic mixing, zero-width characters) as `UNICODE_HOMOGLYPH_MIXING`.
 - Secret/PII redaction on inbound prompts and outbound responses (JSON or text payloads), only when the corresponding output guard is enabled.
+- MCP request redaction covers both legacy top-level tool payloads and JSON-RPC `tools/call` argument shapes before forwarding upstream.
 - Workload-specific policy overrides based on headers, metadata, or route.
+- OWASP LLM08 excessive agency guard with configurable tool-invocation threshold (`security.max_tool_invocations_per_request`).
+- OWASP output policy scan runs on actual LLM responses in the proxy adapter path (not just pre-flight).
 - Skills security gateway for scanning new skills before install.
 - Config reload with last-known-good fallback.
 - Output size limits and redaction.
@@ -21,11 +25,13 @@ Security and policy middleware between client apps, LLM providers, and MCP serve
 Configs live under `configs/`:
 
 - Workload IDs must be unique, and the configured default workload must exist.
-- Duplicate `allowed_llm_backends`, `allowed_mcp_backends`, `allowed_models`, and `allowed_tools` entries are rejected at load time.
+- Duplicate `allowed_llm_backends`, `allowed_mcp_backends`, `allowed_models`, `allowed_tools`, and `routing.trusted_override_source_apps` entries are rejected at load time.
 - LLM/MCP backend `base_url` values must be valid absolute HTTP(S) URLs.
 - Duplicate model names inside a single LLM backend are rejected at load time.
 - `auth.mode: api_key` requires `auth.api_key_env`; MCP `auth.type: bearer_env` requires `auth.token_env`.
 - `logging.debug_capture.max_entries` and `logging.debug_capture.max_payload_chars` let you cap in-memory debug retention and truncate oversized captured payloads.
+- `logging.debug_capture.redact_secrets` and `logging.debug_capture.redact_pii` let you make debug capture stricter than normal logging, so secrets or PII can be masked even when generic log redaction is looser.
+- `routing.source_app_workload_map` must reference real workload IDs.
 - Runtime admin state such as debug mode is persisted in `configs/runtime-state.json` so troubleshooting survives reloads and process restarts.
 - Runtime limits such as server/body size ceilings and backend timeout values must be positive integers.
 - Config loading aggregates multiple validation failures into one error so broken reloads are easier to diagnose.
@@ -35,6 +41,7 @@ Configs live under `configs/`:
 - Redaction patterns support inline flags like `(?i)` for case-insensitive matching.
 - JWT auth can enforce `jwt_issuer` and/or `jwt_audience` when configured. Expired tokens are rejected when `exp` is present.
 - `logging.integration_mode` supports `proxy` or `decision`.
+- `security.max_tool_invocations_per_request` sets the threshold for LLM08_EXCESSIVE_AGENCY (default: 5).
 
 ## Endpoints
 
@@ -112,7 +119,8 @@ Resolution notes:
 
 ## Common protections available
 
-- **Heuristic prompt injection**: low-latency first-pass screening for jailbreaks and role hijacks.
+- **Heuristic prompt injection**: low-latency first-pass screening for jailbreaks, role hijacks, base64/hex-encoded payloads, XML-embedded system prompts, and escaped delimiter tricks.
+- **Unicode normalization and homoglyph detection**: NFKC normalization of combining characters; mixed Latin+Cyrillic and zero-width character obfuscation flagged as `UNICODE_HOMOGLYPH_MIXING`.
 - **LLM security scan**: deeper, higher-latency review for sensitive or privileged flows.
 - **Secret redaction**: masks obvious credentials and tokens in prompts, tool payloads, logs, and responses.
 - **PII redaction**: suppresses identity-linked outbound content for privacy-sensitive workloads.
@@ -123,6 +131,7 @@ Resolution notes:
 - **Output size limit**: blocks or constrains oversized responses.
 - **JWT issuer/audience checks**: validates JWT claims when JWT auth is configured.
 - **Debug capture bounds**: truncates oversized captured payloads and limits in-memory retention.
+- **Debug capture redaction overrides**: optionally redact secrets and PII specifically inside captured debug headers and payloads.
 
 ## Integration patterns
 
@@ -232,10 +241,15 @@ Cons:
 - **Traffic** page supports free-text filtering across request IDs, headers, payloads, source IPs, backend names, and integration mode.
 - **Performance** page highlights slowest requests and backend latency summaries.
 - **Settings** page lets admin users toggle debug mode, review integration-mode posture, and keep the debug toggle active across reloads and restarts.
-- Debug capture keeps only the most recent configured entries and truncates large payload strings before storing them in memory.
+- Debug capture keeps only the most recent configured entries, truncates large payload strings before storing them in memory, and can independently redact secrets and PII for troubleshooting safety.
 
 ### CLI
-- `rocketwatchdog perf-summary` fetches recent traffic and prints average latency, p95 latency, and the slowest recent requests.
+- `rocketwatchdog perf-summary` fetches recent traffic and prints average latency, p95 latency, the slowest recent requests, top request shapes, and retry visibility fields when upstream responses expose them (`retry-after`, `x-upstream-retries`, `x-retry-count`, and related headers).
+
+### Retry visibility
+- Recent traffic entries now preserve retry hints from upstream/provider headers when available.
+- Supported hints include `retry-after`, `x-rwd-upstream-retries`, `x-upstream-retries`, `x-retry-count`, `retry-count`, `x-rwd-upstream-status`, and `x-upstream-status`.
+- This makes it easier to spot backend throttling or hidden retry churn without turning on full debug capture.
 
 ## Performance testing
 
@@ -341,6 +355,8 @@ logging:
   debug_capture:
     max_entries: 300
     max_payload_chars: 4000
+    redact_secrets: true
+    redact_pii: true
 ```
 
 ## Validation commands

@@ -95,7 +95,9 @@
           "type": "object",
           "properties": {
             "max_entries": { "type": "integer", "minimum": 1 },
-            "max_payload_chars": { "type": "integer", "minimum": 32 }
+            "max_payload_chars": { "type": "integer", "minimum": 32 },
+            "redact_secrets": { "type": "boolean" },
+            "redact_pii": { "type": "boolean" }
           }
         }
       }

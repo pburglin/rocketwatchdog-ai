@@ -5,6 +5,7 @@ import { redactMessages } from "../utils/redact-messages.js";
 import { redactSecrets } from "../core/guard/redaction.js";
 import { redactObjectStrings } from "../utils/redact-object.js";
 import { buildOutputRedactionPatterns, buildSafeReplyHeaders } from "./http.js";
+import { detectOwaspOutputRisks } from "../core/guard/owasp.js";
 export async function proxyOpenAI(request, reply, snapshot, policy, canonical) {
     const fetchImpl = globalThis.fetch ?? undiciFetch;
     const backendName = policy.allowed_llm_backends[0];
@@ -90,7 +91,20 @@ export async function proxyOpenAI(request, reply, snapshot, policy, canonical) {
         reply.code(413).send({ error: "output_too_large" });
         return;
     }
+    // Compute output redaction patterns (secret and/or PII)
     const patterns = buildOutputRedactionPatterns(policy, snapshot.platform);
+    // Apply OWASP output policy scan when enabled — runs before redaction
+    // so scan reasons accurately reflect the original content.
+    const outputReasons = [];
+    if (policy.output_guards.output_policy_scan) {
+        const redactedForScan = redactSecrets(text, patterns);
+        outputReasons.push(...detectOwaspOutputRisks(text, redactedForScan.hits));
+    }
+    if (outputReasons.length > 0) {
+        request.log.warn({ requestId: canonical.requestId, reasons: outputReasons }, "output_guard_policy_violation");
+        reply.code(403).send({ error: "output_guard_rejected", reasons: outputReasons });
+        return;
+    }
     if (patterns.length > 0 && response.headers.get("content-type")?.includes("application/json")) {
         try {
             const parsed = JSON.parse(text);

@@ -43,12 +43,27 @@ function truncateLongStrings(value: unknown, maxChars: number): unknown {
   return value;
 }
 
+function buildDebugCapturePatterns(platform: PlatformConfig): string[] {
+  const debugCapture = platform.logging.debug_capture;
+  const redactSecrets = debugCapture?.redact_secrets ?? platform.security.redact_secrets_in_logs;
+  const redactPii = debugCapture?.redact_pii ?? redactSecrets;
+  const patterns: string[] = [];
+
+  if (redactSecrets) {
+    patterns.push(...platform.redaction.secret_patterns);
+  }
+
+  if (redactPii) {
+    patterns.push(...(platform.redaction.pii_patterns ?? []));
+  }
+
+  return patterns;
+}
+
 function maybeRedact<T>(platform: PlatformConfig, value: T): T {
-  if (!platform.security.redact_secrets_in_logs) return value;
-  return redactObjectStrings(value, [
-    ...platform.redaction.secret_patterns,
-    ...(platform.redaction.pii_patterns ?? [])
-  ]).redacted as T;
+  const patterns = buildDebugCapturePatterns(platform);
+  if (patterns.length === 0) return value;
+  return redactObjectStrings(value, patterns).redacted as T;
 }
 
 export function recordDebugLog(

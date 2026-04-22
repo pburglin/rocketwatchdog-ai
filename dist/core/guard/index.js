@@ -1,14 +1,18 @@
-import { normalizeUnicode } from "./unicode.js";
+import { normalizeUnicode, hasHomoglyphs } from "./unicode.js";
 import { detectPromptInjection } from "./injection.js";
 import { detectOwaspInputRisks } from "./owasp.js";
 import { redactSecrets } from "./redaction.js";
 import { validateTools } from "./tools.js";
 export function runGuards(input, policy, platform, toolSchemas) {
+    const reasons = [];
     let workingText = input.text;
     if (platform.security.normalize_unicode) {
         workingText = normalizeUnicode(workingText);
     }
-    const reasons = [];
+    // Mixed-script homoglyph detection (Latin + Cyrillic overlap, zero-width chars)
+    if (hasHomoglyphs(input.text)) {
+        reasons.push("UNICODE_HOMOGLYPH_MIXING");
+    }
     if (policy.max_prompt_chars > 0 && workingText.length > policy.max_prompt_chars) {
         reasons.push("INPUT_TOO_LARGE");
     }
@@ -19,7 +23,7 @@ export function runGuards(input, policy, platform, toolSchemas) {
         }
     }
     if (policy.input_guards.llm_security_scan) {
-        reasons.push(...detectOwaspInputRisks(workingText, policy.max_prompt_chars, input.toolInvocations));
+        reasons.push(...detectOwaspInputRisks(workingText, policy.max_prompt_chars, input.toolInvocations, platform.security.max_tool_invocations_per_request));
     }
     const shouldRedactInput = policy.input_guards.secret_redaction ?? false;
     const redaction = shouldRedactInput

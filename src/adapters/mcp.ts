@@ -18,8 +18,36 @@ function extractMcpText(payload: unknown): string {
     const messages = (params as { messages?: unknown }).messages;
     const fromMessages = extractTextFromMessages(messages);
     if (fromMessages) return fromMessages;
+
+    const args = (params as { arguments?: unknown }).arguments;
+    if (args && typeof args === "object") {
+      const candidateText = [
+        (args as { prompt?: unknown }).prompt,
+        (args as { input?: unknown }).input,
+        (args as { query?: unknown }).query
+      ].find((value) => typeof value === "string");
+      if (typeof candidateText === "string") return candidateText;
+    }
   }
   return "";
+}
+
+function extractMcpToolInvocations(payload: Record<string, unknown>) {
+  if (typeof payload.tool === "string") {
+    return [{ name: payload.tool as string, arguments: payload.arguments }];
+  }
+
+  if (payload.method === "tools/call") {
+    const params = payload.params;
+    if (params && typeof params === "object" && typeof (params as { name?: unknown }).name === "string") {
+      return [{
+        name: (params as { name: string }).name,
+        arguments: (params as { arguments?: unknown }).arguments
+      }];
+    }
+  }
+
+  return undefined;
 }
 
 export async function proxyMcp(
@@ -43,10 +71,7 @@ export async function proxyMcp(
 
   const body = request.body as Record<string, unknown>;
   const inputText = extractMcpText(body);
-  const toolInvocations =
-    typeof body.tool === "string"
-      ? [{ name: body.tool as string, arguments: body.arguments }]
-      : undefined;
+  const toolInvocations = extractMcpToolInvocations(body);
   const guardResult = runGuards(
     {
       text: inputText,
@@ -94,12 +119,17 @@ export async function proxyMcp(
     if (params && typeof params === "object") {
       const messages = (params as { messages?: unknown }).messages;
       const { redactedMessages } = redactMessages(messages, snapshot.platform.redaction.secret_patterns);
-      if (redactedMessages !== messages) {
+      const { redacted: redactedParamsArguments } = redactObjectStrings(
+        (params as { arguments?: unknown }).arguments,
+        snapshot.platform.redaction.secret_patterns
+      );
+      if (redactedMessages !== messages || redactedParamsArguments !== (params as { arguments?: unknown }).arguments) {
         forwardBody = {
           ...forwardBody,
           params: {
             ...(params as Record<string, unknown>),
-            messages: redactedMessages
+            messages: redactedMessages,
+            arguments: redactedParamsArguments
           }
         };
       }

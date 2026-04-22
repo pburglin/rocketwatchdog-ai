@@ -28,6 +28,7 @@ export type PlatformConfig = {
     default_action_on_guard_error: "allow" | "block";
     max_prompt_chars?: number;
     max_output_chars?: number;
+    max_tool_invocations_per_request?: number; // threshold for LLM08_EXCESSIVE_AGENCY (default: 5)
   };
   llm_backends: Record<
     string,
@@ -60,6 +61,8 @@ export type PlatformConfig = {
     debug_capture?: {
       max_entries?: number;
       max_payload_chars?: number;
+      redact_secrets?: boolean;
+      redact_pii?: boolean;
     };
   };
   redaction: {

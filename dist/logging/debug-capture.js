@@ -23,13 +23,24 @@ function truncateLongStrings(value, maxChars) {
     }
     return value;
 }
+function buildDebugCapturePatterns(platform) {
+    const debugCapture = platform.logging.debug_capture;
+    const redactSecrets = debugCapture?.redact_secrets ?? platform.security.redact_secrets_in_logs;
+    const redactPii = debugCapture?.redact_pii ?? redactSecrets;
+    const patterns = [];
+    if (redactSecrets) {
+        patterns.push(...platform.redaction.secret_patterns);
+    }
+    if (redactPii) {
+        patterns.push(...(platform.redaction.pii_patterns ?? []));
+    }
+    return patterns;
+}
 function maybeRedact(platform, value) {
-    if (!platform.security.redact_secrets_in_logs)
+    const patterns = buildDebugCapturePatterns(platform);
+    if (patterns.length === 0)
         return value;
-    return redactObjectStrings(value, [
-        ...platform.redaction.secret_patterns,
-        ...(platform.redaction.pii_patterns ?? [])
-    ]).redacted;
+    return redactObjectStrings(value, patterns).redacted;
 }
 export function recordDebugLog(platform, entry) {
     const maxPayloadChars = platform.logging.debug_capture?.max_payload_chars ?? 4000;

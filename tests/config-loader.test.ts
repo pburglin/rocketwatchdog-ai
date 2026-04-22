@@ -299,4 +299,45 @@ policy:
       /invalid url protocol|timeout_ms|max_entries|request_timeout_ms|max_body_size_kb/i
     );
   });
+
+  it("rejects source app routing that points at unknown workloads and duplicate trusted apps", () => {
+    const dir = makeConfigDir({
+      "platform.yaml": `
+server:
+  host: 0.0.0.0
+  port: 8080
+  request_timeout_ms: 30000
+  max_body_size_kb: 1024
+routing:
+  workload_header: x-rwd-workload
+  allow_client_workload_override: false
+  trusted_override_source_apps: [rocketclaw, rocketclaw]
+  source_app_workload_map:
+    mobile-app: missing-workload
+  default_workload: default
+security:
+  default_level: L1
+  fail_closed_on_invalid_config: true
+  normalize_unicode: true
+  redact_secrets_in_logs: false
+  default_action_on_guard_error: block
+logging:
+  level: info
+  access_log: false
+  decision_log: false
+redaction:
+  secret_patterns: []
+llm_backends: {}
+mcp_backends: {}
+`,
+      "workloads/default.yaml": `
+id: default
+match: {}
+policy:
+  level: L1
+`
+    });
+
+    expect(() => loadConfigDir(dir)).toThrow(/source_app_workload_map|trusted_override_source_apps/i);
+  });
 });

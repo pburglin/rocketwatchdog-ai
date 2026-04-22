@@ -13,6 +13,9 @@ export type RecentRequestEntry = {
   request_id?: string;
   backend?: string;
   integration_mode?: "proxy" | "decision";
+  upstream_status_code?: number;
+  retry_count?: number;
+  retry_after_ms?: number;
   request_headers?: Record<string, string>;
   response_headers?: Record<string, string>;
   request_payload?: unknown;

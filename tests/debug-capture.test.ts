@@ -57,4 +57,41 @@ describe("debug capture", () => {
       prompt: expect.stringContaining("[truncated 60 chars]")
     });
   });
+
+  it("supports debug-capture-specific redaction controls", () => {
+    const redactingPlatform: PlatformConfig = {
+      ...platform,
+      security: {
+        ...platform.security,
+        redact_secrets_in_logs: false
+      },
+      logging: {
+        ...platform.logging,
+        debug_capture: {
+          max_entries: 10,
+          max_payload_chars: 200,
+          redact_secrets: true,
+          redact_pii: false
+        }
+      },
+      redaction: {
+        secret_patterns: ["sk-[0-9A-Za-z]+"],
+        pii_patterns: ["alice@example\\.com"]
+      }
+    };
+
+    recordDebugLog(redactingPlatform, {
+      stage: "request",
+      message: "redaction-check",
+      headers: { authorization: "Bearer sk-1234567890ABCDE12345" },
+      payload: { token: "sk-1234567890ABCDE12345", email: "alice@example.com" }
+    });
+
+    const latest = getDebugLogs(1)[0];
+    expect(latest?.headers).toEqual({ authorization: "Bearer [REDACTED]" });
+    expect(latest?.payload).toEqual({
+      token: "[REDACTED]",
+      email: "alice@example.com"
+    });
+  });
 });

@@ -1,6 +1,6 @@
 import type { EffectivePolicy, PlatformConfig } from "../../types/config.js";
 import type { GuardDecision } from "../../types/decisions.js";
-import { normalizeUnicode } from "./unicode.js";
+import { normalizeUnicode, hasHomoglyphs } from "./unicode.js";
 import { detectPromptInjection } from "./injection.js";
 import { detectOwaspInputRisks } from "./owasp.js";
 import { redactSecrets } from "./redaction.js";
@@ -25,12 +25,17 @@ export function runGuards(
   platform: PlatformConfig,
   toolSchemas: Record<string, Record<string, unknown>>
 ): GuardResult {
+  const reasons: string[] = [];
   let workingText = input.text;
   if (platform.security.normalize_unicode) {
     workingText = normalizeUnicode(workingText);
   }
 
-  const reasons: string[] = [];
+  // Mixed-script homoglyph detection (Latin + Cyrillic overlap, zero-width chars)
+  if (hasHomoglyphs(input.text)) {
+    reasons.push("UNICODE_HOMOGLYPH_MIXING");
+  }
+
   if (policy.max_prompt_chars > 0 && workingText.length > policy.max_prompt_chars) {
     reasons.push("INPUT_TOO_LARGE");
   }
@@ -47,7 +52,8 @@ export function runGuards(
       ...detectOwaspInputRisks(
         workingText,
         policy.max_prompt_chars,
-        input.toolInvocations
+        input.toolInvocations,
+        platform.security.max_tool_invocations_per_request
       )
     );
   }

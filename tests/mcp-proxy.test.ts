@@ -175,6 +175,41 @@ describe("MCP proxy", () => {
     expect(JSON.stringify(forwarded)).not.toContain("sk-1234567890ABCDE12345");
   });
 
+  it("redacts JSON-RPC MCP tool arguments before forwarding upstream", async () => {
+    mockRequest.body = {
+      method: "tools/call",
+      params: {
+        name: "create_ticket",
+        arguments: {
+          note: "token sk-1234567890ABCDE12345",
+          prompt: "use sk-1234567890ABCDE12345"
+        }
+      }
+    };
+    mockPolicy.input_guards.secret_redaction = true;
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      status: 200,
+      headers: new Headers({ "content-type": "application/json" }),
+      text: async () => JSON.stringify({ result: "ok" })
+    } as any);
+    vi.stubGlobal("fetch", fetchMock);
+
+    await proxyMcp(
+      mockRequest as FastifyRequest,
+      mockReply as FastifyReply,
+      mockSnapshot,
+      mockPolicy,
+      mockCanonical
+    );
+
+    const forwarded = JSON.parse(fetchMock.mock.calls[0]![1]!.body as string);
+    expect(forwarded.params.arguments).toEqual({
+      note: "token [REDACTED]",
+      prompt: "use [REDACTED]"
+    });
+  });
+
   it("drops unsafe upstream reply headers before responding", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
       status: 200,

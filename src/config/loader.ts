@@ -145,6 +145,24 @@ function validateSnapshot(
     errors.push(`Default workload not found: ${defaultId}`);
   }
 
+  const sourceAppMap = platform.routing.source_app_workload_map ?? {};
+  const missingMappedWorkloads = Object.entries(sourceAppMap)
+    .filter(([, workloadId]) => !ids.has(workloadId))
+    .map(([sourceApp, workloadId]) => `${sourceApp}->${workloadId}`);
+  if (missingMappedWorkloads.length > 0) {
+    errors.push(
+      `routing.source_app_workload_map references unknown workloads: ${missingMappedWorkloads.join(", ")}`
+    );
+  }
+
+  const trustedApps = platform.routing.trusted_override_source_apps ?? [];
+  const duplicateTrustedApps = findDuplicates(trustedApps);
+  if (duplicateTrustedApps.length > 0) {
+    errors.push(
+      `routing.trusted_override_source_apps has duplicates: ${duplicateTrustedApps.join(", ")}`
+    );
+  }
+
   for (const [name, backend] of Object.entries(platform.llm_backends)) {
     validateUrl(backend.base_url, `llm_backends.${name}.base_url`, errors);
     const modelDuplicates = findDuplicates(backend.models);

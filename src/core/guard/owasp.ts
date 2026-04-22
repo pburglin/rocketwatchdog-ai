@@ -29,7 +29,12 @@ const highImpactAdvicePatterns = [
   /diagnos(?:e|is)\b/i
 ];
 
-export function detectOwaspInputRisks(text: string, maxPromptChars: number, toolInvocations?: ToolInvocation[]): string[] {
+export function detectOwaspInputRisks(
+  text: string,
+  maxPromptChars: number,
+  toolInvocations: ToolInvocation[] | undefined,
+  maxToolInvocationsPerRequest = 5
+): string[] {
   const reasons: string[] = [];
 
   if (detectPromptInjection(text).length > 0) {
@@ -56,7 +61,7 @@ export function detectOwaspInputRisks(text: string, maxPromptChars: number, tool
     reasons.push("LLM10_MODEL_THEFT");
   }
 
-  if (toolInvocations && toolInvocations.length >= 5) {
+  if (toolInvocations && toolInvocations.length >= maxToolInvocationsPerRequest) {
     reasons.push("LLM08_EXCESSIVE_AGENCY");
   }
 

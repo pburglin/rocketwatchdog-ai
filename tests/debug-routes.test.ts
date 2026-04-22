@@ -5,6 +5,7 @@ import path from 'node:path';
 import fastify from 'fastify';
 import { ConfigSnapshotManager } from '../src/config/snapshot.js';
 import { registerRoutes } from '../src/http/routes.js';
+import { registerTrafficLogging } from '../src/http/traffic.js';
 import type { EffectivePolicy } from '../src/types/config.js';
 import { loadDebugModeState, setDebugModeEnabled } from '../src/logging/debug-runtime.js';
 
@@ -95,6 +96,7 @@ describe('debug endpoints and decision mode', () => {
   it('toggles debug mode and returns filtered logs', async () => {
     const snapshotManager = new ConfigSnapshotManager(makeConfigDir());
     const app = fastify();
+    registerTrafficLogging(app);
     registerRoutes(app, snapshotManager, resolvePolicy);
 
     await app.inject({ method: 'POST', url: '/v1/debug/status', payload: { enabled: true } });
@@ -122,6 +124,7 @@ describe('debug endpoints and decision mode', () => {
   it('returns allow decision without proxying in decision mode endpoint', async () => {
     const snapshotManager = new ConfigSnapshotManager(makeConfigDir());
     const app = fastify();
+    registerTrafficLogging(app);
     registerRoutes(app, snapshotManager, resolvePolicy);
     const fetchSpy = vi.fn();
     vi.stubGlobal('fetch', fetchSpy);
@@ -137,10 +140,44 @@ describe('debug endpoints and decision mode', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
+  it('captures retry metadata in recent traffic entries', async () => {
+    const snapshotManager = new ConfigSnapshotManager(makeConfigDir());
+    const app = fastify();
+    registerTrafficLogging(app);
+    registerRoutes(app, snapshotManager, resolvePolicy);
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      status: 429,
+      headers: new Headers({
+        'content-type': 'application/json',
+        'retry-after': '1.5',
+        'x-upstream-retries': '2',
+        'x-upstream-status': '429'
+      }),
+      text: async () => JSON.stringify({ error: 'rate_limited' })
+    } as any));
+
+    await app.inject({
+      method: 'POST',
+      url: '/v1/proxy/llm',
+      payload: { model: 'gpt-main', messages: [{ role: 'user', content: 'hello' }] }
+    });
+
+    const traffic = await app.inject({ method: 'GET', url: '/v1/traffic/recent?limit=1' });
+    expect(traffic.statusCode).toBe(200);
+    expect(traffic.json().items[0]).toMatchObject({
+      status_code: 429,
+      retry_count: 2,
+      upstream_status_code: 429,
+      retry_after_ms: 1500
+    });
+  });
+
   it('restores persisted debug mode on a new snapshot manager', async () => {
     const dir = makeConfigDir();
     const firstManager = new ConfigSnapshotManager(dir);
     const firstApp = fastify();
+    registerTrafficLogging(firstApp);
     registerRoutes(firstApp, firstManager, resolvePolicy);
 
     const toggle = await firstApp.inject({ method: 'POST', url: '/v1/debug/status', payload: { enabled: true } });
