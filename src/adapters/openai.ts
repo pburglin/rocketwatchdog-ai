@@ -3,12 +3,28 @@ import { fetch as undiciFetch } from "undici";
 import type { ConfigSnapshot, EffectivePolicy } from "../types/config.js";
 import type { CanonicalRequest } from "../types/canonical.js";
 import { runGuards } from "../core/guard/index.js";
-import { extractTextFromMessages, extractToolDefinitions, extractToolInvocations } from "../utils/extract.js";
-import { redactMessages } from "../utils/redact-messages.js";
+import { extractPrimaryText, extractToolDefinitions, extractToolInvocations } from "../utils/extract.js";
 import { redactSecrets } from "../core/guard/redaction.js";
 import { redactObjectStrings } from "../utils/redact-object.js";
+import { redactPromptBearingContent } from "../utils/redact-prompt-content.js";
 import { buildOutputRedactionPatterns, buildSafeReplyHeaders } from "./http.js";
 import { detectOwaspOutputRisks } from "../core/guard/owasp.js";
+
+function resolveOpenAiUpstreamPath(
+  request: FastifyRequest,
+  body: Record<string, unknown>
+): "/v1/chat/completions" | "/v1/responses" {
+  if (typeof request.url === "string") {
+    if (request.url.includes("/v1/responses")) return "/v1/responses";
+    if (request.url.includes("/v1/chat/completions")) return "/v1/chat/completions";
+  }
+
+  if (body.input !== undefined || body.instructions !== undefined) {
+    return "/v1/responses";
+  }
+
+  return "/v1/chat/completions";
+}
 
 export async function proxyOpenAI(
   request: FastifyRequest,
@@ -42,8 +58,7 @@ export async function proxyOpenAI(
     }
   }
 
-  const messages = body?.messages;
-  const inputText = extractTextFromMessages(messages);
+  const inputText = extractPrimaryText(body);
   const tools = extractToolDefinitions(body?.tools);
   const toolInvocations = extractToolInvocations(body);
 
@@ -71,7 +86,10 @@ export async function proxyOpenAI(
   let forwardBody = body;
   const shouldRedactInput = policy.input_guards.secret_redaction ?? false;
   if (shouldRedactInput) {
-    const { redactedMessages } = redactMessages(messages, snapshot.platform.redaction.secret_patterns);
+    const { redacted: redactedBody } = redactPromptBearingContent(
+      body,
+      snapshot.platform.redaction.secret_patterns
+    );
     const { redacted: redactedTools } = redactObjectStrings(
       body?.tools,
       snapshot.platform.redaction.secret_patterns
@@ -81,8 +99,7 @@ export async function proxyOpenAI(
       snapshot.platform.redaction.secret_patterns
     );
     forwardBody = {
-      ...body,
-      messages: redactedMessages,
+      ...redactedBody,
       tools: redactedTools,
       tool_choice: redactedToolChoice
     };
@@ -94,10 +111,27 @@ export async function proxyOpenAI(
   };
   if (backend.api_key_env) {
     const apiKey = process.env[backend.api_key_env];
-    if (apiKey) headers.authorization = `Bearer ${apiKey}`;
+    if (!apiKey) {
+      request.log.error(
+        {
+          requestId: canonical.requestId,
+          backend: backendName,
+          apiKeyEnv: backend.api_key_env
+        },
+        "llm_backend_api_key_env_missing"
+      );
+      reply.code(503).send({
+        error: "llm_backend_auth_unavailable",
+        backend: backendName,
+        missing_env: backend.api_key_env
+      });
+      return;
+    }
+    headers.authorization = `Bearer ${apiKey}`;
   }
 
-  const upstream = new URL("/v1/chat/completions", backend.base_url).toString();
+  const upstreamPath = resolveOpenAiUpstreamPath(request, body);
+  const upstream = new URL(upstreamPath, backend.base_url).toString();
   let response: Response;
   try {
     response = await fetchImpl(upstream, {
@@ -137,6 +171,11 @@ export async function proxyOpenAI(
     outputReasons.push(...detectOwaspOutputRisks(text, redactedForScan.hits));
   }
   if (outputReasons.length > 0) {
+    request.rwdTrafficMeta = {
+      ...request.rwdTrafficMeta,
+      decision: "block",
+      reasonCodes: outputReasons
+    };
     request.log.warn(
       { requestId: canonical.requestId, reasons: outputReasons },
       "output_guard_policy_violation"

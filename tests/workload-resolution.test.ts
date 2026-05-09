@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveWorkload } from "../src/core/workload.js";
+import { explainWorkloadResolution, resolveWorkload } from "../src/core/workload.js";
 import type { PlatformConfig, WorkloadConfig } from "../src/types/config.js";
 
 const platform: PlatformConfig = {
@@ -59,5 +59,21 @@ describe("resolveWorkload", () => {
       sourceApp: "partner"
     });
     expect(result?.id).toBe("trusted-only");
+  });
+
+  it("explains why an untrusted override fell back to the default workload", () => {
+    const trace = explainWorkloadResolution(platform, workloads, {
+      route: "/v1",
+      headers: { "x-rwd-workload": "trusted-only", "x-rwd-source-app": "untrusted" },
+      payload: {},
+      sourceApp: "untrusted"
+    });
+
+    expect(trace.selectedWorkloadId).toBe("default");
+    expect(trace.steps[0]).toMatchObject({
+      stage: "header_override",
+      outcome: "skipped"
+    });
+    expect(trace.steps.some((step) => step.stage === "fallback" && step.outcome === "matched")).toBe(true);
   });
 });

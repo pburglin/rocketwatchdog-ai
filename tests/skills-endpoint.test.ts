@@ -1,10 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import fastify from "fastify";
 import { registerRoutes } from "../src/http/routes.js";
 import { ConfigSnapshotManager } from "../src/config/snapshot.js";
 import type { EffectivePolicy } from "../src/types/config.js";
 
 const snapshotManager = new ConfigSnapshotManager("configs");
+const apps: Array<ReturnType<typeof fastify>> = [];
+
+afterEach(async () => {
+  await Promise.all(apps.splice(0).map((app) => app.close()));
+});
 
 const resolvePolicy = (): EffectivePolicy => ({
   workload_id: "default",
@@ -26,6 +31,7 @@ const resolvePolicy = (): EffectivePolicy => ({
 describe("skills scan endpoint", () => {
   it("blocks when threshold exceeded", async () => {
     const app = fastify();
+    apps.push(app);
     registerRoutes(app, snapshotManager, resolvePolicy);
     const res = await app.inject({
       method: "POST",
@@ -37,6 +43,7 @@ describe("skills scan endpoint", () => {
 
   it("uses platform max_risk_score when no threshold provided", async () => {
     const app = fastify();
+    apps.push(app);
     registerRoutes(app, snapshotManager, resolvePolicy);
     const res = await app.inject({
       method: "POST",

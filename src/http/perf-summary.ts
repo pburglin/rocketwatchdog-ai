@@ -18,6 +18,10 @@ export type PerfSummary = {
     retried_requests: number;
     retry_after_ms_max: number;
   };
+  output_policy_blocks: {
+    total: number;
+    by_reason: Record<string, number>;
+  };
 };
 
 export function summarizeRecentRequests(items: RecentRequestEntry[]): PerfSummary {
@@ -30,6 +34,8 @@ export function summarizeRecentRequests(items: RecentRequestEntry[]): PerfSummar
   let totalRetries = 0;
   let retriedRequests = 0;
   let retryAfterMsMax = 0;
+  let outputPolicyBlocks = 0;
+  const outputPolicyReasons = new Map<string, number>();
 
   for (const item of items) {
     const key = [item.method, item.path, item.backend ?? "unknown", item.integration_mode ?? "proxy"].join(" ");
@@ -41,6 +47,14 @@ export function summarizeRecentRequests(items: RecentRequestEntry[]): PerfSummar
     totalRetries += retries;
     if (retries > 0) retriedRequests += 1;
     retryAfterMsMax = Math.max(retryAfterMsMax, item.retry_after_ms ?? 0);
+
+    const matchingOutputReasons = (item.reasonCodes ?? []).filter(isOutputPolicyReason);
+    if (matchingOutputReasons.length > 0) {
+      outputPolicyBlocks += 1;
+      for (const reason of matchingOutputReasons) {
+        outputPolicyReasons.set(reason, (outputPolicyReasons.get(reason) ?? 0) + 1);
+      }
+    }
   }
 
   const request_shapes = [...shapeBuckets.entries()]
@@ -65,8 +79,16 @@ export function summarizeRecentRequests(items: RecentRequestEntry[]): PerfSummar
       total: totalRetries,
       retried_requests: retriedRequests,
       retry_after_ms_max: retryAfterMsMax
+    },
+    output_policy_blocks: {
+      total: outputPolicyBlocks,
+      by_reason: Object.fromEntries(outputPolicyReasons)
     }
   };
+}
+
+function isOutputPolicyReason(reason: string) {
+  return reason === "LLM06_SENSITIVE_INFO_DISCLOSURE" || reason === "LLM09_OVERRELIANCE_RISK";
 }
 
 function percentile95(values: number[]) {

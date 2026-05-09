@@ -8,19 +8,32 @@ const dataPoisoningPatterns = [
     /store\s+this\s+(?:for|in)\s+(?:future|memory)/i
 ];
 const supplyChainPatterns = [
-    /\b(?:pip|npm|brew|apt-get)\s+install\b/i,
-    /\bcurl\s+[^\s]+\s*\|\s*sh\b/i,
-    /\bwget\s+[^\s]+\s*\|\s*sh\b/i
+    /\b(?:pip|npm|brew|apt-get|apt|yum|dnf|choco)\s+install\b/i,
+    /\bcurl\s+[^\s]+\s*\|\s*(?:sh|bash|zsh)\b/i,
+    /\bwget\s+[^\s]+\s*\|\s*(?:sh|bash|zsh)\b/i,
+    /\b(?:pip|npm)\s+install\s+[^\s]+--?(?:user|root|trusted|ignore-scripts)/i,
+    /\bsudo\s+npm\s+install\b/i,
+    /\bkill\s+-9\s+(?:root|system)/i,
+    /\brm\s+(?:-rf|-r\s+-f)\s+(?:\/|\*\s|\.\s)/i
 ];
 const modelTheftPatterns = [
     /model\s+(?:weights|checkpoint|parameters)/i,
     /(?:steal|extract|exfiltrate|download)\s+(?:the\s+)?model/i
 ];
 const highImpactAdvicePatterns = [
-    /this\s+is\s+legal\s+advice/i,
-    /this\s+is\s+medical\s+advice/i,
-    /this\s+is\s+financial\s+advice/i,
+    /this\s+is\s+(?:not\s+)?legal\s+advice/i,
+    /this\s+is\s+(?:not\s+)?medical\s+advice/i,
+    /this\s+is\s+(?:not\s+)?financial\s+advice/i,
     /diagnos(?:e|is)\b/i
+];
+/**
+ * Detect suspicious /v1/responses input shapes that wrap user prompts
+ * inside a structured "previousMessages" or similar array — a known
+ * prompt injection vector where the model is asked to act on injected
+ * content from prior turns.
+ */
+const structuredResponsesPatterns = [
+    /(?:previousMessages|priorMessages|earlierMessages|messageHistory)/i
 ];
 export function detectOwaspInputRisks(text, maxPromptChars, toolInvocations, maxToolInvocationsPerRequest = 5) {
     const reasons = [];
@@ -44,6 +57,10 @@ export function detectOwaspInputRisks(text, maxPromptChars, toolInvocations, max
     }
     if (toolInvocations && toolInvocations.length >= maxToolInvocationsPerRequest) {
         reasons.push("LLM08_EXCESSIVE_AGENCY");
+    }
+    // Detect structured /v1/responses input arrays wrapping user content
+    if (structuredResponsesPatterns.some((pattern) => pattern.test(text))) {
+        reasons.push("LLM01_PROMPT_INJECTION");
     }
     return reasons;
 }

@@ -3,34 +3,12 @@ import { fetch as undiciFetch } from "undici";
 import type { ConfigSnapshot, EffectivePolicy } from "../types/config.js";
 import type { CanonicalRequest } from "../types/canonical.js";
 import { runGuards } from "../core/guard/index.js";
-import { extractTextFromMessages } from "../utils/extract.js";
+import { extractPrimaryText } from "../utils/extract.js";
 import { redactSecrets } from "../core/guard/redaction.js";
 import { redactMessages } from "../utils/redact-messages.js";
 import { redactObjectStrings } from "../utils/redact-object.js";
 import { buildOutputRedactionPatterns, buildSafeReplyHeaders } from "./http.js";
-
-function extractMcpText(payload: unknown): string {
-  if (!payload || typeof payload !== "object") return "";
-  const prompt = (payload as { prompt?: unknown }).prompt;
-  if (typeof prompt === "string") return prompt;
-  const params = (payload as { params?: unknown }).params;
-  if (params && typeof params === "object") {
-    const messages = (params as { messages?: unknown }).messages;
-    const fromMessages = extractTextFromMessages(messages);
-    if (fromMessages) return fromMessages;
-
-    const args = (params as { arguments?: unknown }).arguments;
-    if (args && typeof args === "object") {
-      const candidateText = [
-        (args as { prompt?: unknown }).prompt,
-        (args as { input?: unknown }).input,
-        (args as { query?: unknown }).query
-      ].find((value) => typeof value === "string");
-      if (typeof candidateText === "string") return candidateText;
-    }
-  }
-  return "";
-}
+import { detectOwaspOutputRisks } from "../core/guard/owasp.js";
 
 function extractMcpToolInvocations(payload: Record<string, unknown>) {
   if (typeof payload.tool === "string") {
@@ -70,7 +48,7 @@ export async function proxyMcp(
   }
 
   const body = request.body as Record<string, unknown>;
-  const inputText = extractMcpText(body);
+  const inputText = extractPrimaryText(body);
   const toolInvocations = extractMcpToolInvocations(body);
   const guardResult = runGuards(
     {
@@ -118,18 +96,28 @@ export async function proxyMcp(
     const params = body.params;
     if (params && typeof params === "object") {
       const messages = (params as { messages?: unknown }).messages;
+      const prompt = (params as { prompt?: unknown }).prompt;
       const { redactedMessages } = redactMessages(messages, snapshot.platform.redaction.secret_patterns);
       const { redacted: redactedParamsArguments } = redactObjectStrings(
         (params as { arguments?: unknown }).arguments,
         snapshot.platform.redaction.secret_patterns
       );
-      if (redactedMessages !== messages || redactedParamsArguments !== (params as { arguments?: unknown }).arguments) {
+      const redactedPrompt =
+        typeof prompt === "string"
+          ? redactSecrets(prompt, snapshot.platform.redaction.secret_patterns).redacted
+          : prompt;
+      if (
+        redactedMessages !== messages ||
+        redactedParamsArguments !== (params as { arguments?: unknown }).arguments ||
+        redactedPrompt !== prompt
+      ) {
         forwardBody = {
           ...forwardBody,
           params: {
             ...(params as Record<string, unknown>),
             messages: redactedMessages,
-            arguments: redactedParamsArguments
+            arguments: redactedParamsArguments,
+            ...(typeof redactedPrompt === "string" ? { prompt: redactedPrompt } : {})
           }
         };
       }
@@ -142,7 +130,23 @@ export async function proxyMcp(
   };
   if (backend.auth?.type === "bearer_env" && backend.auth.token_env) {
     const token = process.env[backend.auth.token_env];
-    if (token) headers.authorization = `Bearer ${token}`;
+    if (!token) {
+      request.log.error(
+        {
+          requestId: canonical.requestId,
+          backend: backendName,
+          tokenEnv: backend.auth.token_env
+        },
+        "mcp_backend_token_env_missing"
+      );
+      reply.code(503).send({
+        error: "mcp_backend_auth_unavailable",
+        backend: backendName,
+        missing_env: backend.auth.token_env
+      });
+      return;
+    }
+    headers.authorization = `Bearer ${token}`;
   }
 
   let response: Response;
@@ -173,6 +177,25 @@ export async function proxyMcp(
     return;
   }
   const patterns = buildOutputRedactionPatterns(policy, snapshot.platform);
+
+  const outputReasons: string[] = [];
+  if (policy.output_guards.output_policy_scan) {
+    const redactedForScan = redactSecrets(text, patterns);
+    outputReasons.push(...detectOwaspOutputRisks(text, redactedForScan.hits));
+  }
+  if (outputReasons.length > 0) {
+    request.rwdTrafficMeta = {
+      ...request.rwdTrafficMeta,
+      decision: "block",
+      reasonCodes: outputReasons
+    };
+    request.log.warn(
+      { requestId: canonical.requestId, reasons: outputReasons },
+      "output_guard_policy_violation"
+    );
+    reply.code(403).send({ error: "output_guard_rejected", reasons: outputReasons });
+    return;
+  }
   if (patterns.length > 0 && response.headers.get("content-type")?.includes("application/json")) {
     try {
       const parsed = JSON.parse(text);

@@ -1,6 +1,7 @@
 import type { ConfigSnapshot, EffectivePolicy, WorkloadConfig } from "../types/config.js";
 import type { CanonicalRequest } from "../types/canonical.js";
 import type { GuardDecision } from "../types/decisions.js";
+import type { WorkloadResolutionTrace } from "../core/workload.js";
 
 export type RequestContext = {
   route: string;
@@ -12,4 +13,5 @@ export type RequestContext = {
   decision?: GuardDecision;
   target?: "llm" | "mcp";
   workload?: WorkloadConfig;
+  workloadTrace?: WorkloadResolutionTrace;
 };

@@ -125,6 +125,20 @@ function validatePositiveInteger(value: number | undefined, label: string, error
   }
 }
 
+function validatePathPrefix(value: string | undefined, label: string, errors: string[]) {
+  if (value === undefined) return;
+  if (!value.startsWith("/")) {
+    errors.push(`${label} must start with /`);
+  }
+}
+
+function validateEnvVarName(value: string | undefined, label: string, errors: string[]) {
+  if (value === undefined) return;
+  if (!/^[A-Z_][A-Z0-9_]*$/i.test(value)) {
+    errors.push(`${label} must be a valid environment variable name`);
+  }
+}
+
 function validateSnapshot(
   platform: PlatformConfig,
   workloads: WorkloadConfig[],
@@ -165,6 +179,7 @@ function validateSnapshot(
 
   for (const [name, backend] of Object.entries(platform.llm_backends)) {
     validateUrl(backend.base_url, `llm_backends.${name}.base_url`, errors);
+    validateEnvVarName(backend.api_key_env, `llm_backends.${name}.api_key_env`, errors);
     const modelDuplicates = findDuplicates(backend.models);
     if (modelDuplicates.length > 0) {
       errors.push(`LLM backend ${name} has duplicate models: ${modelDuplicates.join(", ")}`);
@@ -176,11 +191,13 @@ function validateSnapshot(
     if (backend.auth?.type === "bearer_env" && !backend.auth.token_env) {
       errors.push(`MCP backend ${name} requires auth.token_env when auth.type=bearer_env`);
     }
+    validateEnvVarName(backend.auth?.token_env, `mcp_backends.${name}.auth.token_env`, errors);
   }
 
   if (platform.auth?.mode === "api_key" && !platform.auth.api_key_env) {
     errors.push("Platform auth.api_key_env is required when auth.mode=api_key");
   }
+  validateEnvVarName(platform.auth?.api_key_env, "auth.api_key_env", errors);
 
   for (const [name, backend] of Object.entries(platform.llm_backends)) {
     validatePositiveInteger(backend.timeout_ms, `llm_backends.${name}.timeout_ms`, errors);
@@ -192,11 +209,30 @@ function validateSnapshot(
 
   validatePositiveInteger(platform.server.request_timeout_ms, "server.request_timeout_ms", errors);
   validatePositiveInteger(platform.server.max_body_size_kb, "server.max_body_size_kb", errors);
+  validatePositiveInteger(
+    platform.security.max_tool_invocations_per_request,
+    "security.max_tool_invocations_per_request",
+    errors
+  );
 
   const debugCapture = platform.logging.debug_capture;
   validatePositiveInteger(debugCapture?.max_entries, "logging.debug_capture.max_entries", errors);
   if (debugCapture?.max_payload_chars !== undefined && debugCapture.max_payload_chars < 32) {
     errors.push("logging.debug_capture.max_payload_chars must be at least 32 characters");
+  }
+
+  const fallbackWorkloads = workloads.filter((workload) => {
+    const match = workload.match ?? {};
+    return (
+      (match.routes?.length ?? 0) === 0 &&
+      Object.keys(match.headers ?? {}).length === 0 &&
+      Object.keys(match.metadata ?? {}).length === 0
+    );
+  });
+  if (fallbackWorkloads.length > 1) {
+    errors.push(
+      `Multiple fallback workloads detected: ${fallbackWorkloads.map((workload) => workload.id).join(", ")}`
+    );
   }
 
   for (const workload of workloads) {
@@ -268,6 +304,21 @@ function validateSnapshot(
           );
         }
       }
+    }
+
+    const benchmarkPresets = workload.benchmark?.presets ?? [];
+    const benchmarkNameDuplicates = findDuplicates(benchmarkPresets.map((preset) => preset.name));
+    if (benchmarkNameDuplicates.length > 0) {
+      errors.push(
+        `Workload ${workload.id} has duplicate benchmark preset names: ${benchmarkNameDuplicates.join(", ")}`
+      );
+    }
+    for (const preset of benchmarkPresets) {
+      validatePathPrefix(
+        preset.path,
+        `workload ${workload.id} benchmark preset ${preset.name}.path`,
+        errors
+      );
     }
   }
 

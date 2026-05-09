@@ -8,8 +8,10 @@ import { registerRoutes } from "../src/http/routes.js";
 import type { EffectivePolicy } from "../src/types/config.js";
 
 const tempDirs: string[] = [];
+const apps: Array<ReturnType<typeof fastify>> = [];
 
-afterEach(() => {
+afterEach(async () => {
+  await Promise.all(apps.splice(0).map((app) => app.close()));
   for (const dir of tempDirs.splice(0)) {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -93,6 +95,7 @@ describe("config status and readiness", () => {
     snapshotManager.get();
 
     const app = fastify();
+    apps.push(app);
     registerRoutes(app, snapshotManager, resolvePolicy);
 
     const statusRes = await app.inject({ method: "GET", url: "/v1/config/status" });
@@ -137,6 +140,7 @@ policy:
     expect(reloaded.workloads[0]?.id).toBe("default");
 
     const app = fastify();
+    apps.push(app);
     registerRoutes(app, snapshotManager, resolvePolicy);
 
     const statusRes = await app.inject({ method: "GET", url: "/v1/config/status" });

@@ -2,7 +2,7 @@ import { Command } from "commander";
 import fs from "node:fs";
 import { loadConfigDir } from "./config/loader.js";
 import { mergeEffectivePolicy } from "./types/policy.js";
-import { resolveWorkload } from "./core/workload.js";
+import { explainWorkloadResolution, resolveWorkload } from "./core/workload.js";
 import { runGuards } from "./core/guard/index.js";
 import { buildPipeline } from "./pipeline/build.js";
 import { summarizeRecentRequests } from "./http/perf-summary.js";
@@ -38,6 +38,25 @@ program
     console.log(JSON.stringify(policy, null, 2));
 });
 program
+    .command("explain-workload")
+    .description("Explain workload resolution for a request payload")
+    .option("-c, --config-dir <path>", "Config directory", "configs")
+    .requiredOption("-r, --request-file <path>", "Request JSON file")
+    .action((options) => {
+    const snapshot = loadConfigDir(options.configDir);
+    const requestPayload = JSON.parse(fs.readFileSync(options.requestFile, "utf-8"));
+    const headers = normalizeHeaders(requestPayload.headers ?? {});
+    const route = requestPayload.route ?? "/v1/proxy/llm";
+    const sourceAppHeader = snapshot.platform.routing.source_app_header?.toLowerCase();
+    const trace = explainWorkloadResolution(snapshot.platform, snapshot.workloads, {
+        route,
+        headers,
+        payload: requestPayload.body ?? requestPayload,
+        ...(sourceAppHeader && headers[sourceAppHeader] ? { sourceApp: headers[sourceAppHeader] } : {})
+    });
+    console.log(JSON.stringify(trace, null, 2));
+});
+program
     .command("dry-run")
     .description("Run a dry-run request through the guard pipeline")
     .option("-c, --config-dir <path>", "Config directory", "configs")
@@ -46,27 +65,30 @@ program
     const snapshot = loadConfigDir(options.configDir);
     const requestPayload = JSON.parse(fs.readFileSync(options.requestFile, "utf-8"));
     const headers = normalizeHeaders(requestPayload.headers ?? {});
+    const route = requestPayload.route ?? "/v1/proxy/llm";
+    const sourceAppHeader = snapshot.platform.routing.source_app_header?.toLowerCase();
     const workload = resolveWorkload(snapshot.platform, snapshot.workloads, {
-        route: requestPayload.route ?? "/v1/proxy/llm",
+        route,
         headers,
-        payload: requestPayload.body ?? requestPayload
+        payload: requestPayload.body ?? requestPayload,
+        ...(sourceAppHeader && headers[sourceAppHeader] ? { sourceApp: headers[sourceAppHeader] } : {})
     });
     if (!workload)
         throw new Error("No workload resolved");
     const policy = mergeEffectivePolicy(snapshot.platform, workload);
     const pipeline = buildPipeline();
     const ctx = await pipeline.run({
-        route: requestPayload.route ?? "/v1/proxy/llm",
+        route,
         headers,
         payload: requestPayload.body ?? requestPayload,
         snapshot
     });
     if (!ctx.decision) {
         const guardResult = runGuards({ text: JSON.stringify(requestPayload.body ?? requestPayload) }, policy, snapshot.platform, snapshot.toolSchemas);
-        console.log(JSON.stringify({ workload: workload.id, decision: guardResult.decision }, null, 2));
+        console.log(JSON.stringify({ workload: workload.id, workloadTrace: ctx.workloadTrace, decision: guardResult.decision }, null, 2));
         return;
     }
-    console.log(JSON.stringify({ workload: workload.id, decision: ctx.decision }, null, 2));
+    console.log(JSON.stringify({ workload: workload.id, workloadTrace: ctx.workloadTrace, decision: ctx.decision }, null, 2));
 });
 program
     .command("config-status")

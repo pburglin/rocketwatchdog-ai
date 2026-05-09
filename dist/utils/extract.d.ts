@@ -1,4 +1,5 @@
 export declare function extractTextFromMessages(messages: unknown): string;
+export declare function extractPrimaryText(payload: unknown): string;
 export declare function extractToolDefinitions(tools: unknown): {
     name: string;
     parameters?: unknown;

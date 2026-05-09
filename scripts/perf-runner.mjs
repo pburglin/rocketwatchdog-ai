@@ -1,10 +1,27 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { performance } from 'node:perf_hooks';
+import yaml from 'yaml';
 
 const baseUrl = process.env.RWD_BASE_URL ?? 'http://127.0.0.1:8080';
 const iterations = Number.parseInt(process.env.RWD_PERF_ITERATIONS ?? '20', 10);
 const concurrency = Number.parseInt(process.env.RWD_PERF_CONCURRENCY ?? '4', 10);
+const configDir = process.env.RWD_PERF_CONFIG_DIR ?? 'configs';
+const useWorkloadPresets = /^(1|true|yes)$/i.test(process.env.RWD_PERF_USE_WORKLOAD_PRESETS ?? '');
+const workloadFilter = new Set(
+  (process.env.RWD_PERF_WORKLOADS ?? '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean)
+);
+const scenarioFilter = new Set(
+  (process.env.RWD_PERF_SCENARIOS ?? '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean)
+);
 
-const scenarios = [
+const defaultScenarios = [
   {
     name: 'healthz',
     method: 'GET',
@@ -30,11 +47,58 @@ const scenarios = [
   },
 ];
 
+function normalizePresetScenario(workloadId, preset) {
+  return {
+    name: `${workloadId}:${preset.name}`,
+    method: preset.method ?? 'POST',
+    path: preset.path,
+    headers: preset.headers ?? {},
+    ...(preset.body ? { body: preset.body } : {}),
+    expectedStatus: preset.expected_status,
+    workloadId,
+    presetName: preset.name,
+  };
+}
+
+function loadWorkloadPresetScenarios() {
+  const workloadsDir = path.join(configDir, 'workloads');
+  if (!fs.existsSync(workloadsDir)) {
+    return [];
+  }
+
+  return fs
+    .readdirSync(workloadsDir)
+    .filter((file) => file.endsWith('.yaml') || file.endsWith('.yml'))
+    .flatMap((file) => {
+      const workload = yaml.parse(fs.readFileSync(path.join(workloadsDir, file), 'utf-8'));
+      if (!workload?.id || !Array.isArray(workload?.benchmark?.presets)) {
+        return [];
+      }
+      if (workloadFilter.size > 0 && !workloadFilter.has(workload.id)) {
+        return [];
+      }
+      return workload.benchmark.presets.map((preset) => normalizePresetScenario(workload.id, preset));
+    });
+}
+
+const presetScenarios = useWorkloadPresets ? loadWorkloadPresetScenarios() : [];
+const scenarios = [...defaultScenarios, ...presetScenarios].filter((scenario) =>
+  scenarioFilter.size === 0 || scenarioFilter.has(scenario.name)
+);
+
+if (scenarios.length === 0) {
+  throw new Error('No benchmark scenarios selected. Check RWD_PERF_WORKLOADS/RWD_PERF_SCENARIOS filters.');
+}
+
 async function callScenario(scenario) {
   const started = performance.now();
+  const headers = {
+    ...(scenario.body ? { 'content-type': 'application/json' } : {}),
+    ...(scenario.headers ?? {}),
+  };
   const response = await fetch(`${baseUrl}${scenario.path}`, {
     method: scenario.method,
-    headers: { 'content-type': 'application/json' },
+    headers,
     ...(scenario.body ? { body: JSON.stringify(scenario.body) } : {}),
   });
   await response.text();
@@ -64,8 +128,12 @@ async function runScenario(scenario) {
     while (completed < iterations) {
       completed += 1;
       const result = await callScenario(scenario);
-      if (result.status >= 400) {
-        throw new Error(`${scenario.name} failed with status ${result.status}`);
+      const expectedStatus = scenario.expectedStatus;
+      const statusMatches = expectedStatus ? result.status === expectedStatus : result.status < 400;
+      if (!statusMatches) {
+        throw new Error(
+          `${scenario.name} failed with status ${result.status}${expectedStatus ? ` (expected ${expectedStatus})` : ''}`
+        );
       }
       durations.push(result.duration);
     }
@@ -84,6 +152,10 @@ console.log(JSON.stringify({
   baseUrl,
   iterations,
   concurrency,
+  configDir,
+  useWorkloadPresets,
+  selectedWorkloads: [...workloadFilter],
+  selectedScenarios: scenarios.map((scenario) => scenario.name),
   generatedAt: new Date().toISOString(),
   results,
 }, null, 2));

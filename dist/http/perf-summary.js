@@ -7,6 +7,8 @@ export function summarizeRecentRequests(items) {
     let totalRetries = 0;
     let retriedRequests = 0;
     let retryAfterMsMax = 0;
+    let outputPolicyBlocks = 0;
+    const outputPolicyReasons = new Map();
     for (const item of items) {
         const key = [item.method, item.path, item.backend ?? "unknown", item.integration_mode ?? "proxy"].join(" ");
         const bucket = shapeBuckets.get(key) ?? [];
@@ -17,6 +19,13 @@ export function summarizeRecentRequests(items) {
         if (retries > 0)
             retriedRequests += 1;
         retryAfterMsMax = Math.max(retryAfterMsMax, item.retry_after_ms ?? 0);
+        const matchingOutputReasons = (item.reasonCodes ?? []).filter(isOutputPolicyReason);
+        if (matchingOutputReasons.length > 0) {
+            outputPolicyBlocks += 1;
+            for (const reason of matchingOutputReasons) {
+                outputPolicyReasons.set(reason, (outputPolicyReasons.get(reason) ?? 0) + 1);
+            }
+        }
     }
     const request_shapes = [...shapeBuckets.entries()]
         .map(([key, bucket]) => ({
@@ -39,8 +48,15 @@ export function summarizeRecentRequests(items) {
             total: totalRetries,
             retried_requests: retriedRequests,
             retry_after_ms_max: retryAfterMsMax
+        },
+        output_policy_blocks: {
+            total: outputPolicyBlocks,
+            by_reason: Object.fromEntries(outputPolicyReasons)
         }
     };
+}
+function isOutputPolicyReason(reason) {
+    return reason === "LLM06_SENSITIVE_INFO_DISCLOSURE" || reason === "LLM09_OVERRELIANCE_RISK";
 }
 function percentile95(values) {
     if (values.length === 0)

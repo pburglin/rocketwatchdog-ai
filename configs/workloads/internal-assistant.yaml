@@ -27,3 +27,18 @@ actions:
   on_block:
     http_status: 403
     message: "Internal workload blocked by policy."
+benchmark:
+  presets:
+    - name: decision-safe
+      method: POST
+      path: /v1/decision
+      headers:
+        x-rwd-workload: internal-assistant
+        x-rwd-source-app: rocketclaw
+      body:
+        model: gpt-main
+        messages:
+          - role: user
+            content: "summarize the latest deployment notes"
+        meta:
+          userId: perf-user

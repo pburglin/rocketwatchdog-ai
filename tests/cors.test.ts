@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import fastify from "fastify";
 import { registerCors } from "../src/http/cors.js";
 import { registerRoutes } from "../src/http/routes.js";
@@ -6,6 +6,11 @@ import { ConfigSnapshotManager } from "../src/config/snapshot.js";
 import type { EffectivePolicy } from "../src/types/config.js";
 
 const snapshotManager = new ConfigSnapshotManager("configs");
+const apps: Array<ReturnType<typeof fastify>> = [];
+
+afterEach(async () => {
+  await Promise.all(apps.splice(0).map((app) => app.close()));
+});
 
 const resolvePolicy = (): EffectivePolicy => ({
   workload_id: "default",
@@ -27,6 +32,7 @@ const resolvePolicy = (): EffectivePolicy => ({
 describe("cors", () => {
   it("answers preflight requests with access-control headers", async () => {
     const app = fastify();
+    apps.push(app);
     registerCors(app);
     registerRoutes(app, snapshotManager, resolvePolicy);
 
@@ -48,6 +54,7 @@ describe("cors", () => {
 
   it("allows DELETE preflight requests for config admin endpoints", async () => {
     const app = fastify();
+    apps.push(app);
     registerCors(app);
     registerRoutes(app, snapshotManager, resolvePolicy);
 
@@ -66,6 +73,7 @@ describe("cors", () => {
 
   it("adds access-control headers on standard responses", async () => {
     const app = fastify();
+    apps.push(app);
     registerCors(app);
     registerRoutes(app, snapshotManager, resolvePolicy);
 

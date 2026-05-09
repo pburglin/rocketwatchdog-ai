@@ -78,6 +78,14 @@ export type PlatformConfig = {
         jwt_audience?: string;
     };
 };
+export type WorkloadBenchmarkPreset = {
+    name: string;
+    method?: "GET" | "POST";
+    path: string;
+    headers?: Record<string, string>;
+    body?: Record<string, unknown>;
+    expected_status?: number;
+};
 export type WorkloadConfig = {
     id: string;
     match: {
@@ -107,6 +115,9 @@ export type WorkloadConfig = {
             http_status: number;
             message: string;
         };
+    };
+    benchmark?: {
+        presets?: WorkloadBenchmarkPreset[];
     };
 };
 export type EffectivePolicy = {

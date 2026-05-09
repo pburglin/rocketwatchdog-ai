@@ -32,3 +32,15 @@ actions:
   on_block:
     http_status: 403
     message: "Request blocked by RocketWatchDog policy."
+benchmark:
+  presets:
+    - name: proxy-chat-safe
+      method: POST
+      path: /v1/chat/completions
+      headers:
+        x-rwd-workload: public-chat
+      body:
+        model: gpt-fast
+        messages:
+          - role: user
+            content: "hello from public-chat benchmark"

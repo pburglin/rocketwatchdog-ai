@@ -10,6 +10,7 @@ import type { EffectivePolicy } from '../src/types/config.js';
 import { loadDebugModeState, setDebugModeEnabled } from '../src/logging/debug-runtime.js';
 
 const tempDirs: string[] = [];
+const apps: Array<ReturnType<typeof fastify>> = [];
 
 function makeConfigDir() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rwd-debug-'));
@@ -84,9 +85,10 @@ const resolvePolicy = (): EffectivePolicy => ({
   tool_guards: { require_tool_allowlist: false, require_tool_schema_validation: false }
 });
 
-afterEach(() => {
+afterEach(async () => {
   vi.restoreAllMocks();
   setDebugModeEnabled(false);
+  await Promise.all(apps.splice(0).map((app) => app.close()));
   for (const dir of tempDirs.splice(0)) {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -96,6 +98,7 @@ describe('debug endpoints and decision mode', () => {
   it('toggles debug mode and returns filtered logs', async () => {
     const snapshotManager = new ConfigSnapshotManager(makeConfigDir());
     const app = fastify();
+    apps.push(app);
     registerTrafficLogging(app);
     registerRoutes(app, snapshotManager, resolvePolicy);
 
@@ -124,6 +127,7 @@ describe('debug endpoints and decision mode', () => {
   it('returns allow decision without proxying in decision mode endpoint', async () => {
     const snapshotManager = new ConfigSnapshotManager(makeConfigDir());
     const app = fastify();
+    apps.push(app);
     registerTrafficLogging(app);
     registerRoutes(app, snapshotManager, resolvePolicy);
     const fetchSpy = vi.fn();
@@ -143,6 +147,7 @@ describe('debug endpoints and decision mode', () => {
   it('captures retry metadata in recent traffic entries', async () => {
     const snapshotManager = new ConfigSnapshotManager(makeConfigDir());
     const app = fastify();
+    apps.push(app);
     registerTrafficLogging(app);
     registerRoutes(app, snapshotManager, resolvePolicy);
 
@@ -177,6 +182,7 @@ describe('debug endpoints and decision mode', () => {
     const dir = makeConfigDir();
     const firstManager = new ConfigSnapshotManager(dir);
     const firstApp = fastify();
+    apps.push(firstApp);
     registerTrafficLogging(firstApp);
     registerRoutes(firstApp, firstManager, resolvePolicy);
 

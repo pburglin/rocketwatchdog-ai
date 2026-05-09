@@ -1,11 +1,10 @@
 import { runGuards } from "../core/guard/index.js";
-import { extractTextFromMessages, extractToolDefinitions, extractToolInvocations } from "../utils/extract.js";
+import { extractPrimaryText, extractToolDefinitions, extractToolInvocations } from "../utils/extract.js";
 export class InputGuardsStage {
     async run(ctx) {
         if (!ctx.policy)
             throw new Error("Missing policy");
-        const messages = ctx.payload?.messages;
-        const inputText = extractTextFromMessages(messages);
+        const inputText = extractPrimaryText(ctx.payload);
         const tools = extractToolDefinitions(ctx.payload?.tools);
         const toolInvocations = extractToolInvocations(ctx.payload);
         const result = runGuards({ text: inputText, tools, toolInvocations }, ctx.policy, ctx.snapshot.platform, ctx.snapshot.toolSchemas);

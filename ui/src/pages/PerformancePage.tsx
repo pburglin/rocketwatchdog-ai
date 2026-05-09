@@ -13,6 +13,26 @@ export function PerformancePage({ controlPlane }: PerformancePageProps) {
     [controlPlane.traffic]
   );
 
+  const outputPolicySummary = useMemo(() => {
+    let total = 0;
+    let sensitiveDisclosure = 0;
+    let overreliance = 0;
+    for (const entry of controlPlane.traffic) {
+      const reasons = entry.reasonCodes ?? [];
+      if (reasons.includes('LLM06_SENSITIVE_INFO_DISCLOSURE')) {
+        total += 1;
+        sensitiveDisclosure += 1;
+      }
+      if (reasons.includes('LLM09_OVERRELIANCE_RISK')) {
+        if (!reasons.includes('LLM06_SENSITIVE_INFO_DISCLOSURE')) {
+          total += 1;
+        }
+        overreliance += 1;
+      }
+    }
+    return { total, sensitiveDisclosure, overreliance };
+  }, [controlPlane.traffic]);
+
   const topSlow = sorted.slice(0, 10);
   const backendSummary = useMemo(() => {
     const map = new Map<string, { count: number; total: number; max: number }>();
@@ -41,6 +61,20 @@ export function PerformancePage({ controlPlane }: PerformancePageProps) {
           Inspect the slowest requests, compare backend latency, and correlate issues with request IDs, source IPs,
           or integration mode from the traffic buffer.
         </p>
+        <div className="mt-5 grid gap-4 md:grid-cols-3">
+          <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+            <p className="text-sm text-gray-400">Output policy blocks</p>
+            <p className="mt-2 text-3xl font-semibold text-white">{outputPolicySummary.total}</p>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+            <p className="text-sm text-gray-400">Sensitive disclosure</p>
+            <p className="mt-2 text-3xl font-semibold text-white">{outputPolicySummary.sensitiveDisclosure}</p>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+            <p className="text-sm text-gray-400">Overreliance advice risk</p>
+            <p className="mt-2 text-3xl font-semibold text-white">{outputPolicySummary.overreliance}</p>
+          </div>
+        </div>
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">

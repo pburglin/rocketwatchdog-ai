@@ -160,6 +160,62 @@ policy:
     expect(() => loadConfigDir(dir)).toThrow(/invalid url.*duplicate models|duplicate models.*invalid url/i);
   });
 
+  it("rejects invalid auth env var names", () => {
+    const dir = makeConfigDir({
+      "platform.yaml": `
+server:
+  host: 0.0.0.0
+  port: 8080
+  request_timeout_ms: 30000
+  max_body_size_kb: 1024
+routing:
+  workload_header: x-rwd-workload
+  allow_client_workload_override: false
+  default_workload: default
+security:
+  default_level: L1
+  fail_closed_on_invalid_config: true
+  normalize_unicode: true
+  redact_secrets_in_logs: false
+  default_action_on_guard_error: block
+auth:
+  mode: api_key
+  api_key_env: bad-env-name
+logging:
+  level: info
+  access_log: false
+  decision_log: false
+redaction:
+  secret_patterns: []
+llm_backends:
+  primary:
+    provider: openai
+    base_url: https://example.com
+    timeout_ms: 30000
+    api_key_env: invalid-env
+    models: [gpt-main]
+mcp_backends:
+  primary:
+    transport: http
+    base_url: https://mcp.example.com
+    timeout_ms: 30000
+    auth:
+      type: bearer_env
+      token_env: invalid-env
+`,
+      "workloads/default.yaml": `
+id: default
+match: {}
+policy:
+  level: L1
+  allowed_llm_backends: [primary]
+  allowed_mcp_backends: [primary]
+`
+    });
+
+    expect(() => loadConfigDir(dir)).toThrow(/valid environment variable name/i);
+  });
+
   it("rejects bearer MCP auth without a token env and api key auth without api_key_env", () => {
     const dir = makeConfigDir({
       "platform.yaml": `
@@ -300,6 +356,45 @@ policy:
     );
   });
 
+  it("rejects non-positive excessive-agency thresholds", () => {
+    const dir = makeConfigDir({
+      "platform.yaml": `
+server:
+  host: 0.0.0.0
+  port: 8080
+  request_timeout_ms: 30000
+  max_body_size_kb: 1024
+routing:
+  workload_header: x-rwd-workload
+  allow_client_workload_override: false
+  default_workload: default
+security:
+  default_level: L1
+  fail_closed_on_invalid_config: true
+  normalize_unicode: true
+  redact_secrets_in_logs: false
+  default_action_on_guard_error: block
+  max_tool_invocations_per_request: 0
+logging:
+  level: info
+  access_log: false
+  decision_log: false
+redaction:
+  secret_patterns: []
+llm_backends: {}
+mcp_backends: {}
+`,
+      "workloads/default.yaml": `
+id: default
+match: {}
+policy:
+  level: L1
+`
+    });
+
+    expect(() => loadConfigDir(dir)).toThrow(/max_tool_invocations_per_request/i);
+  });
+
   it("rejects source app routing that points at unknown workloads and duplicate trusted apps", () => {
     const dir = makeConfigDir({
       "platform.yaml": `
@@ -339,5 +434,99 @@ policy:
     });
 
     expect(() => loadConfigDir(dir)).toThrow(/source_app_workload_map|trusted_override_source_apps/i);
+  });
+
+  it("rejects ambiguous fallback workloads", () => {
+    const dir = makeConfigDir({
+      "platform.yaml": `
+server:
+  host: 0.0.0.0
+  port: 8080
+  request_timeout_ms: 30000
+  max_body_size_kb: 1024
+routing:
+  workload_header: x-rwd-workload
+  allow_client_workload_override: false
+  default_workload: default
+security:
+  default_level: L1
+  fail_closed_on_invalid_config: true
+  normalize_unicode: true
+  redact_secrets_in_logs: false
+  default_action_on_guard_error: block
+logging:
+  level: info
+  access_log: false
+  decision_log: false
+redaction:
+  secret_patterns: []
+llm_backends: {}
+mcp_backends: {}
+`,
+      "workloads/default.yaml": `
+id: default
+match: {}
+policy:
+  level: L1
+`,
+      "workloads/secondary.yaml": `
+id: secondary
+match: {}
+policy:
+  level: L1
+`
+    });
+
+    expect(() => loadConfigDir(dir)).toThrow(/multiple fallback workloads/i);
+  });
+
+  it("rejects duplicate benchmark preset names and paths without a leading slash", () => {
+    const dir = makeConfigDir({
+      "platform.yaml": `
+server:
+  host: 0.0.0.0
+  port: 8080
+  request_timeout_ms: 30000
+  max_body_size_kb: 1024
+routing:
+  workload_header: x-rwd-workload
+  allow_client_workload_override: false
+  default_workload: default
+security:
+  default_level: L1
+  fail_closed_on_invalid_config: true
+  normalize_unicode: true
+  redact_secrets_in_logs: false
+  default_action_on_guard_error: block
+logging:
+  level: info
+  access_log: false
+  decision_log: false
+redaction:
+  secret_patterns: []
+llm_backends: {}
+mcp_backends: {}
+`,
+      "workloads/default.yaml": `
+id: default
+match: {}
+policy:
+  level: L1
+benchmark:
+  presets:
+    - name: smoke
+      method: POST
+      path: v1/decision
+      body:
+        messages:
+          - role: user
+            content: hello
+    - name: smoke
+      method: GET
+      path: /healthz
+`
+    });
+
+    expect(() => loadConfigDir(dir)).toThrow(/duplicate benchmark preset names|must start with/i);
   });
 });

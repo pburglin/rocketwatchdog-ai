@@ -35,3 +35,17 @@ actions:
   on_block:
     http_status: 403
     message: "Sensitive workload blocked by policy."
+benchmark:
+  presets:
+    - name: proxy-mcp-read
+      method: POST
+      path: /v1/proxy/mcp
+      headers:
+        x-rwd-workload: sensitive-mcp
+      body:
+        tool: read_customer_record
+        arguments:
+          customer_id: "cust-benchmark"
+        meta:
+          userId: perf-user
+          sessionId: perf-session

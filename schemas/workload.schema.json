@@ -54,6 +54,35 @@
           }
         }
       }
+    },
+    "benchmark": {
+      "type": "object",
+      "properties": {
+        "presets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "path"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "method": { "type": "string", "enum": ["GET", "POST"] },
+              "path": { "type": "string", "minLength": 1 },
+              "headers": {
+                "type": "object",
+                "additionalProperties": { "type": "string" }
+              },
+              "body": {
+                "type": "object"
+              },
+              "expected_status": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 599
+              }
+            }
+          }
+        }
+      }
     }
   }
 }

@@ -50,6 +50,7 @@ describe("summarizeRecentRequests", () => {
 
     expect(summary.count).toBe(3);
     expect(summary.retries).toEqual({ total: 3, retried_requests: 2, retry_after_ms_max: 800 });
+    expect(summary.output_policy_blocks).toEqual({ total: 0, by_reason: {} });
     expect(summary.request_shapes[0]).toMatchObject({
       key: "POST /v1/proxy/llm openai_primary proxy",
       count: 2,
@@ -57,5 +58,40 @@ describe("summarizeRecentRequests", () => {
       retried_requests: 1
     });
     expect(summary.slowest[0]?.duration_ms).toBe(120);
+  });
+
+  it("counts output policy rejection reasons separately", () => {
+    const summary = summarizeRecentRequests([
+      {
+        id: "1",
+        timestamp: "2026-04-18T09:00:00.000Z",
+        method: "POST",
+        path: "/v1/proxy/llm",
+        workload: "default",
+        action: "block",
+        reasonCodes: ["LLM09_OVERRELIANCE_RISK"],
+        duration_ms: 20,
+        status_code: 403
+      },
+      {
+        id: "2",
+        timestamp: "2026-04-18T09:00:01.000Z",
+        method: "POST",
+        path: "/v1/proxy/mcp",
+        workload: "default",
+        action: "block",
+        reasonCodes: ["LLM06_SENSITIVE_INFO_DISCLOSURE", "other_reason"],
+        duration_ms: 30,
+        status_code: 403
+      }
+    ]);
+
+    expect(summary.output_policy_blocks).toEqual({
+      total: 2,
+      by_reason: {
+        LLM09_OVERRELIANCE_RISK: 1,
+        LLM06_SENSITIVE_INFO_DISCLOSURE: 1
+      }
+    });
   });
 });

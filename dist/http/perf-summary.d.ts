@@ -17,5 +17,9 @@ export type PerfSummary = {
         retried_requests: number;
         retry_after_ms_max: number;
     };
+    output_policy_blocks: {
+        total: number;
+        by_reason: Record<string, number>;
+    };
 };
 export declare function summarizeRecentRequests(items: RecentRequestEntry[]): PerfSummary;

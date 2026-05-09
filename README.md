@@ -4,13 +4,18 @@ Security and policy middleware between client apps, LLM providers, and MCP serve
 
 ## What it does
 
-- Guardrails for prompt injection (including base64/hex-encoded, XML-embedded, and mixed-script obfuscation), tool allowlists, and tool invocation schemas.
-- Mixed-script homoglyph detection (Latin+Cyrillic mixing, zero-width characters) as `UNICODE_HOMOGLYPH_MIXING`.
-- Secret/PII redaction on inbound prompts and outbound responses (JSON or text payloads), only when the corresponding output guard is enabled.
-- MCP request redaction covers both legacy top-level tool payloads and JSON-RPC `tools/call` argument shapes before forwarding upstream.
+- Guardrails for prompt injection (including base64/hex-encoded, XML-embedded, mixed-script obfuscation, prompt-only/non-chat payloads, structured `/v1/responses` inputs), tool allowlists, and tool invocation schemas.
+- Prompt extraction is biased toward user prompt-bearing fields and skips tool/schema metadata branches to reduce false-positive injection hits from function definitions and JSON schema descriptions.
+- Mixed-script homoglyph detection (Latin+Cyrillic+Greek confusable characters, full-width ASCII presentation forms, zero-width characters) as `UNICODE_HOMOGLYPH_MIXING` — uses a differential substitution approach that avoids false positives on legitimate multilingual content.
+- Secret/PII redaction on inbound prompts and outbound responses (JSON or text payloads), including OpenAI Responses API `input` / `instructions` payloads and MCP tool arguments, only when the corresponding output guard is enabled.
+- Expanded supply-chain risk detection: flags `curl|wget ... | sh`, `npm install --user/--root`, `sudo npm install`, and `rm -rf /` patterns as `LLM05_SUPPLY_CHAIN_RISK`.
+- Structured `/v1/responses` input shape detection (e.g. `previousMessages`, `messageHistory` injection) as `LLM01_PROMPT_INJECTION`.
+- MCP request redaction covers both legacy top-level tool payloads and JSON-RPC `tools/call` argument shapes, including `params.prompt`, before forwarding upstream.
 - Workload-specific policy overrides based on headers, metadata, or route.
 - OWASP LLM08 excessive agency guard with configurable tool-invocation threshold (`security.max_tool_invocations_per_request`).
-- OWASP output policy scan runs on actual LLM responses in the proxy adapter path (not just pre-flight).
+- OpenAI adapter preserves the intended upstream API shape by forwarding `/v1/chat/completions` and `/v1/responses` requests to matching provider endpoints, including `/v1/proxy/llm` calls that use responses-style payloads.
+- OWASP output policy scan runs on actual LLM and MCP responses in the proxy adapter path (not just pre-flight).
+- Proxy adapters fail closed with a 503 auth-unavailable response when a backend is configured to use an env-backed API key/token but that env var is missing at runtime.
 - Skills security gateway for scanning new skills before install.
 - Config reload with last-known-good fallback.
 - Output size limits and redaction.
@@ -29,11 +34,15 @@ Configs live under `configs/`:
 - LLM/MCP backend `base_url` values must be valid absolute HTTP(S) URLs.
 - Duplicate model names inside a single LLM backend are rejected at load time.
 - `auth.mode: api_key` requires `auth.api_key_env`; MCP `auth.type: bearer_env` requires `auth.token_env`.
+- `security.max_tool_invocations_per_request` must be a positive integer when set.
+- Auth env references (`auth.api_key_env`, `llm_backends.*.api_key_env`, `mcp_backends.*.auth.token_env`) must use valid environment variable names.
 - `logging.debug_capture.max_entries` and `logging.debug_capture.max_payload_chars` let you cap in-memory debug retention and truncate oversized captured payloads.
 - `logging.debug_capture.redact_secrets` and `logging.debug_capture.redact_pii` let you make debug capture stricter than normal logging, so secrets or PII can be masked even when generic log redaction is looser.
 - `routing.source_app_workload_map` must reference real workload IDs.
+- Only one fallback workload may omit route/header/metadata match criteria; ambiguous catch-all workloads are rejected at load time.
 - Runtime admin state such as debug mode is persisted in `configs/runtime-state.json` so troubleshooting survives reloads and process restarts.
 - Runtime limits such as server/body size ceilings and backend timeout values must be positive integers.
+- Workload benchmark preset names must be unique within a workload, and benchmark preset paths must start with `/`.
 - Config loading aggregates multiple validation failures into one error so broken reloads are easier to diagnose.
 - `allowed_models` is enforced (requests must specify a model in the allowlist).
 - If `require_tool_allowlist` is enabled and `allowed_tools` is empty, any tool usage is rejected with `TOOL_ALLOWLIST_EMPTY`.
@@ -119,13 +128,17 @@ Resolution notes:
 
 ## Common protections available
 
-- **Heuristic prompt injection**: low-latency first-pass screening for jailbreaks, role hijacks, base64/hex-encoded payloads, XML-embedded system prompts, and escaped delimiter tricks.
-- **Unicode normalization and homoglyph detection**: NFKC normalization of combining characters; mixed Latin+Cyrillic and zero-width character obfuscation flagged as `UNICODE_HOMOGLYPH_MIXING`.
+- **Heuristic prompt injection**: low-latency first-pass screening for jailbreaks, role hijacks, base64/hex-encoded payloads, XML-embedded system prompts, escaped delimiter tricks, and structured `/v1/responses` input shapes (e.g. `previousMessages`, `messageHistory`).
+- **Prompt-bearing extraction**: scans user prompt fields (`messages`, `prompt`, `input`, `query`, `params.arguments`, etc.) while skipping tool definition/schema metadata branches that would otherwise create noisy false positives.
+- **Prompt-aligned input redaction**: inbound secret redaction follows those prompt-bearing fields so Responses API content is scrubbed before forwarding upstream, while tool/schema metadata is left alone unless explicitly redacted as tool payload content.
+- **Unicode normalization and homoglyph detection**: NFKC normalization of combining characters; mixed Latin+Cyrillic+Greek confusable characters, full-width ASCII presentation forms, and zero-width character obfuscation flagged as `UNICODE_HOMOGLYPH_MIXING`.
 - **LLM security scan**: deeper, higher-latency review for sensitive or privileged flows.
 - **Secret redaction**: masks obvious credentials and tokens in prompts, tool payloads, logs, and responses.
 - **PII redaction**: suppresses identity-linked outbound content for privacy-sensitive workloads.
 - **Tool allowlist**: rejects tool calls unless the tool is explicitly permitted by workload policy.
 - **Tool schema validation**: validates tool arguments against registered JSON schemas before execution.
+- **Supply-chain risk detection**: flags pipe-to-shell installs, privileged npm operations, and destructive filesystem commands as `LLM05_SUPPLY_CHAIN_RISK`.
+- **Excessive agency guard**: counts tool invocations per request against a configurable threshold and flags as `LLM08_EXCESSIVE_AGENCY`.
 - **Intent check**: extra scrutiny for higher-risk tool activity when enabled.
 - **Output policy scan**: flags suspicious or policy-violating model output.
 - **Output size limit**: blocks or constrains oversized responses.
@@ -239,25 +252,32 @@ Cons:
 
 ### UI
 - **Traffic** page supports free-text filtering across request IDs, headers, payloads, source IPs, backend names, and integration mode.
-- **Performance** page highlights slowest requests and backend latency summaries.
+- **Performance** page highlights slowest requests, backend latency summaries, and recent output-policy rejection counts.
 - **Settings** page lets admin users toggle debug mode, review integration-mode posture, and keep the debug toggle active across reloads and restarts.
 - Debug capture keeps only the most recent configured entries, truncates large payload strings before storing them in memory, and can independently redact secrets and PII for troubleshooting safety.
 
 ### CLI
 - `rocketwatchdog perf-summary` fetches recent traffic and prints average latency, p95 latency, the slowest recent requests, top request shapes, and retry visibility fields when upstream responses expose them (`retry-after`, `x-upstream-retries`, `x-retry-count`, and related headers).
+- `rocketwatchdog explain-workload --request-file ./examples/request.json` prints a step-by-step workload-routing trace so operators can see exactly why a request matched a given workload.
 
 ### Retry visibility
 - Recent traffic entries now preserve retry hints from upstream/provider headers when available.
 - Supported hints include `retry-after`, `x-rwd-upstream-retries`, `x-upstream-retries`, `x-retry-count`, `retry-count`, `x-rwd-upstream-status`, and `x-upstream-status`.
 - This makes it easier to spot backend throttling or hidden retry churn without turning on full debug capture.
 
+### Output-policy visibility
+- Output-policy rejections raised inside the OpenAI and MCP proxy adapters now annotate the traffic buffer with their exact reason codes.
+- The performance UI surfaces recent counts for `LLM06_SENSITIVE_INFO_DISCLOSURE` and `LLM09_OVERRELIANCE_RISK` so blocked unsafe output is visible alongside latency.
+- `rocketwatchdog perf-summary` now includes an `output_policy_blocks` section for CLI troubleshooting.
+
 ## Performance testing
 
 ### Benchmark scripts
-- `node scripts/perf-runner.mjs` runs representative scenarios:
+- `node scripts/perf-runner.mjs` runs representative built-in scenarios:
   - `GET /healthz`
   - `POST /v1/decision` with a safe request
   - `POST /v1/skills/scan` with benign content
+- Workloads can also define `benchmark.presets` in `configs/workloads/*.yaml` for repeatable route/header/body regression checks.
 - `node scripts/perf-compare.mjs <results.json>` prints a compact summary from saved benchmark output.
 
 ### Steps to run performance tests
@@ -284,15 +304,53 @@ node scripts/perf-compare.mjs perf-results.json
 RWD_PERF_ITERATIONS=50 RWD_PERF_CONCURRENCY=8 node scripts/perf-runner.mjs
 ```
 
+5. Optional: include workload-defined benchmark presets:
+```bash
+RWD_PERF_USE_WORKLOAD_PRESETS=1 node scripts/perf-runner.mjs
+```
+
+6. Optional: target specific workloads or scenarios:
+```bash
+RWD_PERF_USE_WORKLOAD_PRESETS=1 \
+RWD_PERF_WORKLOADS=public-chat,sensitive-mcp \
+RWD_PERF_SCENARIOS=public-chat:proxy-chat-safe,sensitive-mcp:proxy-mcp-read \
+node scripts/perf-runner.mjs
+```
+
 ### Documented baseline results
 
 Baseline captured on the local dev machine with default config, low background load, `RWD_PERF_ITERATIONS=20`, and `RWD_PERF_CONCURRENCY=4`:
 
-- `healthz`: avg **3.2 ms**, p50 **3.0 ms**, p95 **5.8 ms**, max **6.4 ms**
-- `decision-safe`: avg **8.9 ms**, p50 **8.4 ms**, p95 **13.7 ms**, max **15.1 ms**
-- `skills-scan`: avg **7.4 ms**, p50 **7.0 ms**, p95 **11.6 ms**, max **12.8 ms**
+- `healthz`: avg **13.2 ms**, p50 **4.5 ms**, p95 **124.1 ms**, max **124.1 ms**
+- `decision-safe`: avg **7.5 ms**, p50 **6.7 ms**, p95 **18.3 ms**, max **18.3 ms**
+- `skills-scan`: avg **3.5 ms**, p50 **3.6 ms**, p95 **5.0 ms**, max **5.0 ms**
 
 Use these as comparison points only. Re-run locally after meaningful changes and update the numbers when the baseline shifts.
+
+### Workload benchmark preset example
+
+```yaml
+benchmark:
+  presets:
+    - name: proxy-chat-safe
+      method: POST
+      path: /v1/chat/completions
+      headers:
+        x-rwd-workload: public-chat
+      body:
+        model: gpt-fast
+        messages:
+          - role: user
+            content: "hello from public-chat benchmark"
+```
+
+Preset fields:
+- `name`: unique within the workload
+- `method`: `GET` or `POST` (defaults to `POST`)
+- `path`: request path beginning with `/`
+- `headers`: optional request headers
+- `body`: optional JSON request body
+- `expected_status`: optional exact HTTP status to require during benchmarking
 
 ## Quick demo (main features)
 
@@ -367,5 +425,18 @@ npm test
 npm run build
 cd ui && npm run build
 ```
+
+## Workload resolution explain trace example
+
+```bash
+rocketwatchdog explain-workload \
+  --config-dir ./configs \
+  --request-file ./examples/request.json
+```
+
+The trace reports:
+- which resolution stage won (`header_override`, `metadata_override`, `source_app_map`, `match_rules`, `fallback`, or `default`)
+- why earlier stages were skipped or missed
+- the final workload id selected for the request
 
 See `docs/TASKS.md` for current project task tracking.

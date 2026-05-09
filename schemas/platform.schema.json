@@ -46,7 +46,8 @@
         "redact_secrets_in_logs": { "type": "boolean" },
         "default_action_on_guard_error": { "type": "string", "enum": ["allow", "block"] },
         "max_prompt_chars": { "type": "integer", "minimum": 1 },
-        "max_output_chars": { "type": "integer", "minimum": 1 }
+        "max_output_chars": { "type": "integer", "minimum": 1 },
+        "max_tool_invocations_per_request": { "type": "integer", "minimum": 1 }
       }
     },
     "llm_backends": {

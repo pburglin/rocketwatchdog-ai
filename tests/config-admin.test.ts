@@ -9,8 +9,10 @@ import { registerRoutes } from "../src/http/routes.js";
 import type { EffectivePolicy, PlatformConfig } from "../src/types/config.js";
 
 const tempDirs: string[] = [];
+const apps: Array<ReturnType<typeof fastify>> = [];
 
-afterEach(() => {
+afterEach(async () => {
+  await Promise.all(apps.splice(0).map((app) => app.close()));
   for (const dir of tempDirs.splice(0)) {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -147,6 +149,7 @@ describe("config admin endpoints", () => {
     const dir = makeConfigDir();
     const snapshotManager = new ConfigSnapshotManager(dir);
     const app = fastify();
+    apps.push(app);
     registerCors(app);
     registerRoutes(app, snapshotManager, resolvePolicy);
 
@@ -166,6 +169,7 @@ describe("config admin endpoints", () => {
     const dir = makeConfigDir();
     const snapshotManager = new ConfigSnapshotManager(dir);
     const app = fastify();
+    apps.push(app);
     registerCors(app);
     registerRoutes(app, snapshotManager, resolvePolicy);
 
@@ -216,6 +220,7 @@ policy:
     );
     const snapshotManager = new ConfigSnapshotManager(dir);
     const app = fastify();
+    apps.push(app);
     registerCors(app);
     registerRoutes(app, snapshotManager, resolvePolicy);
 
@@ -251,6 +256,7 @@ actions:
 
     const snapshotManager = new ConfigSnapshotManager(dir);
     const app = fastify();
+    apps.push(app);
     registerCors(app);
     registerRoutes(app, snapshotManager, resolvePolicy);
 
@@ -274,6 +280,7 @@ actions:
     const dir = makeConfigDirWithApiKeyAuth();
     const snapshotManager = new ConfigSnapshotManager(dir);
     const app = fastify();
+    apps.push(app);
     registerCors(app);
     registerRoutes(app, snapshotManager, resolvePolicy);
 

@@ -7,8 +7,10 @@ import { registerRoutes } from "../src/http/routes.js";
 import { ConfigSnapshotManager } from "../src/config/snapshot.js";
 
 const tempDirs: string[] = [];
+const apps: Array<ReturnType<typeof fastify>> = [];
 
-afterEach(() => {
+afterEach(async () => {
+  await Promise.all(apps.splice(0).map((app) => app.close()));
   for (const dir of tempDirs.splice(0)) {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -77,6 +79,7 @@ describe("on_block override", () => {
   it("returns configured status/message", async () => {
     const snapshotManager = new ConfigSnapshotManager(makeConfigDir());
     const app = fastify();
+    apps.push(app);
     registerRoutes(app, snapshotManager, () => {
       throw new Error("resolvePolicy should not be called when pipeline resolves workload");
     });
